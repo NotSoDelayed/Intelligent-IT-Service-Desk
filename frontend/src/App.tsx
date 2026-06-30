@@ -1,46 +1,27 @@
-import { useEffect, useState } from "react";
-import api from "./services/api";
+import { lazy } from 'react';
+import { Route, Routes } from 'react-router-dom';
+import { AppLayout } from '@/components/layout';
 
-type HealthResponse = {
-  status: string;
-  message: string;
-};
+const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
+const TicketListPage = lazy(() => import('@/pages/TicketListPage'));
+const TicketDetailsPage = lazy(() => import('@/pages/TicketDetailsPage'));
+const CreateTicketPage = lazy(() => import('@/pages/CreateTicketPage'));
+const AnalyticsPage = lazy(() => import('@/pages/AnalyticsPage'));
+const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
+const NotFoundPage = lazy(() => import('@/pages/NotFoundPage'));
 
 export default function App() {
-  const [data, setData] = useState<HealthResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const fetchHealth = async () => {
-      try {
-        setLoading(true);
-        const res = await api.get<HealthResponse>("/health");
-        setData(res.data);
-      } catch (err) {
-        setError("Frontend Running.\nFailed to reach backend");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchHealth();
-  }, []);
-
-  if (loading) {
-    return <div>Checking backend...</div>;
-  }
-
-  if (error) {
-    return <div style={{ color: "red" }}>{error}</div>;
-  }
-
   return (
-    <div>
-      <h1>Frontend Running</h1>
-      <p>Backend Status: {data?.status}</p>
-      <p>Message: {data?.message}</p>
-      <p>Time: {Date.now()}</p>
-    </div>
+    <Routes>
+      <Route element={<AppLayout />}>
+        <Route index element={<DashboardPage />} />
+        <Route path="tickets" element={<TicketListPage />} />
+        <Route path="tickets/new" element={<CreateTicketPage />} />
+        <Route path="tickets/:id" element={<TicketDetailsPage />} />
+        <Route path="analytics" element={<AnalyticsPage />} />
+        <Route path="settings" element={<SettingsPage />} />
+        <Route path="*" element={<NotFoundPage />} />
+      </Route>
+    </Routes>
   );
 }
