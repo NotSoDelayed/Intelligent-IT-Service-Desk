@@ -1,1 +1,7 @@
+.venv/
 __pycache__/
+*.pyc
+.ruff_cache/
+.env
+data/*.db
+data/sample_tickets.csv
