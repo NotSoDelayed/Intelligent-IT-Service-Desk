@@ -111,7 +111,7 @@ function SidebarHeader({
       ) : (
         <Link to="/" className="flex items-center gap-2 text-sidebar-foreground">
           <TicketCheck className="size-5 text-primary" />
-          <span className="text-base font-semibold tracking-tight">ServiceDesk AI</span>
+          <span className="text-base font-semibold tracking-tight">Intelligent Service Desk</span>
         </Link>
       )}
 

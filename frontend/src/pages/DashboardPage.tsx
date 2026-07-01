@@ -6,7 +6,7 @@ export default function DashboardPage() {
       <div className="flex items-center gap-3">
         <LayoutDashboard className="size-6 text-muted-foreground" />
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">Dashboard</h1>
           <p className="text-sm text-muted-foreground">Overview of your support operations</p>
         </div>
       </div>

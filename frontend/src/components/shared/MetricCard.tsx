@@ -23,7 +23,7 @@ export function MetricCard({ title, value, icon, description, trend, className }
         <div className="flex items-start justify-between">
           <div className="space-y-2">
             <p className="text-sm font-medium text-muted-foreground">{title}</p>
-            <p className="text-2xl font-semibold tracking-tight">{value}</p>
+            <p className="text-3xl font-semibold tracking-tight">{value}</p>
             {(description || trend) && (
               <div className="flex items-center gap-2 text-xs">
                 {trend && (

@@ -6,7 +6,7 @@ export default function SettingsPage() {
       <div className="flex items-center gap-3">
         <Settings className="size-6 text-muted-foreground" />
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">Settings</h1>
           <p className="text-sm text-muted-foreground">Application configuration</p>
         </div>
       </div>

@@ -9,7 +9,7 @@ export default function TicketDetailsPage() {
       <div className="flex items-center gap-3">
         <FileText className="size-6 text-muted-foreground" />
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Ticket #{id}</h1>
+          <h1 className="text-3xl font-semibold tracking-tight">Ticket #{id}</h1>
           <p className="text-sm text-muted-foreground">Ticket details and conversation</p>
         </div>
       </div>
