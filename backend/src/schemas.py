@@ -9,7 +9,7 @@ class UserRegister(BaseModel):
     full_name: str = Field(..., min_length=2, max_length=150)
     email: EmailStr
     password: str = Field(..., min_length=6)
-    customer: str = Field(..., description="Company / department name, used on tickets")
+    department: str = Field(..., description="Company or department name")
 
 
 class UserLogin(BaseModel):
@@ -24,7 +24,7 @@ class UserOut(BaseModel):
     full_name: str
     email: EmailStr
     role: str
-    customer: str | None = None
+    department: str | None = None
     created_at: datetime
 
 
@@ -84,7 +84,7 @@ class TicketOut(BaseModel):
     status: str
     author: str
     age: int
-    customer: str
+    department: str
     created_on: datetime
     ticket_start_date: datetime | None = None
     ticket_closed_date: datetime | None = None
@@ -124,7 +124,7 @@ class TicketListOut(BaseModel):
     difficulty: str | None = None
     assigned_team: str | None = None
     assigned_engineer: str | None = None
-    customer: str
+    department: str
     author: str
     age: int
     created_on: datetime

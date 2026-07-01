@@ -69,7 +69,7 @@ def create_ticket(
         payload.title,
         payload.content,
         payload.technology_app_item,
-        payload.user_priority,          # <-- passed to AI as urgency hint
+        payload.user_priority,
     )
     created_on = datetime.utcnow()
     sla = compute_sla(result.priority, result.difficulty, created_on)
@@ -80,10 +80,10 @@ def create_ticket(
         status=TicketStatus.open,
         author=current_user.full_name,
         author_id=current_user.id,
-        customer=current_user.customer or "N/A",
+        department=current_user.department or "N/A",
         created_on=created_on,
         technology_app_item=payload.technology_app_item,
-        user_priority=payload.user_priority,    # <-- stored on the ticket
+        user_priority=payload.user_priority,
         severity=Severity(result.suggested_severity) if result.suggested_severity in Severity._value2member_map_ else Severity.medium,
         category=result.category,
         priority=result.priority,
@@ -216,7 +216,7 @@ def reanalyze_ticket(
         ticket.title,
         ticket.content,
         ticket.technology_app_item,
-        ticket.user_priority or 3,     # <-- reuse stored user_priority on re-analysis
+        ticket.user_priority or 3,
     )
     sla = compute_sla(result.priority, result.difficulty, ticket.created_on)
 

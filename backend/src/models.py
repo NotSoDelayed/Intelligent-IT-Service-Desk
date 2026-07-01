@@ -42,7 +42,7 @@ class User(Base):
     email = Column(String(150), unique=True, index=True, nullable=False)
     hashed_password = Column(String(255), nullable=False)
     role = Column(Enum(UserRole), default=UserRole.user, nullable=False)
-    customer = Column(String(150), nullable=True)
+    department = Column(String(150), nullable=True)  # company/department name
     is_active = Column(Integer, default=1)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -60,7 +60,7 @@ class Ticket(Base):
     content = Column(Text, nullable=False)
     status = Column(Enum(TicketStatus), default=TicketStatus.open, nullable=False)
     author = Column(String(150), nullable=False)
-    customer = Column(String(150), nullable=False)
+    department = Column(String(150), nullable=False)   # maps to dataset "Customer" column
     created_on = Column(DateTime, default=datetime.utcnow, nullable=False)
     ticket_start_date = Column(DateTime, nullable=True)
     ticket_closed_date = Column(DateTime, nullable=True)
@@ -70,15 +70,15 @@ class Ticket(Base):
     closed_ticket = Column(String(150), nullable=True)
 
     # --- user input ---
-    user_priority = Column(Integer, nullable=True)  # 1-5, self-reported urgency by the user
+    user_priority = Column(Integer, nullable=True)  # 1-5, self-reported urgency
 
     # --- system / relational fields ---
     author_id = Column(Integer, ForeignKey("users.id"), nullable=False)
 
     # --- AI-generated fields (filled by classifier.py) ---
     category = Column(String(100), nullable=True)
-    priority = Column(String(20), nullable=True)       # P1-P4 (AI final call)
-    difficulty = Column(String(10), nullable=True)     # Easy / Medium / Hard
+    priority = Column(String(20), nullable=True)
+    difficulty = Column(String(10), nullable=True)
     assigned_team = Column(String(100), nullable=True)
     ai_recommended_steps = Column(JSON, nullable=True)
     ai_confidence = Column(Integer, nullable=True)

@@ -41,7 +41,7 @@ def seed_admin():
                 email=settings.ADMIN_EMAIL,
                 hashed_password=hash_password(settings.ADMIN_PASSWORD),
                 role=UserRole.admin,
-                customer="IT Department",
+                department="IT Department",
                 is_active=1,
             )
             db.add(admin_user)
