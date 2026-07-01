@@ -20,11 +20,6 @@ from schemas import (
 router = APIRouter(prefix="/tickets", tags=["Tickets"])
 
 
-# ------------------------------------------------------------------
-# GET /tickets
-# Admin  → all tickets, filterable + SLA-sorted
-# User   → own tickets only
-# ------------------------------------------------------------------
 @router.get("", response_model=list[TicketListOut])
 def list_tickets(
     status_filter: str | None = Query(None, alias="status"),
@@ -38,7 +33,6 @@ def list_tickets(
 ):
     q = db.query(Ticket)
 
-    # non-admins can only see their own tickets
     if current_user.role != UserRole.admin:
         q = q.filter(Ticket.author_id == current_user.id)
 
@@ -51,7 +45,6 @@ def list_tickets(
     if assigned_team:
         q = q.filter(Ticket.assigned_team == assigned_team)
 
-    # search only applies for admin
     if search and current_user.role == UserRole.admin:
         like = f"%{search}%"
         q = q.filter(
@@ -61,22 +54,23 @@ def list_tickets(
     if sort == "newest" or current_user.role != UserRole.admin:
         q = q.order_by(Ticket.created_on.desc())
     else:
-        # admin queue: soonest SLA deadline first
         q = q.order_by(Ticket.due_by.asc().nullslast())
 
     return q.all()
 
 
-# ------------------------------------------------------------------
-# POST /tickets  -- submit a new ticket (AI + SLA run automatically)
-# ------------------------------------------------------------------
 @router.post("", response_model=TicketOut, status_code=status.HTTP_201_CREATED)
 def create_ticket(
     payload: TicketCreate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    result = classify_ticket(payload.title, payload.content, payload.technology_app_item)
+    result = classify_ticket(
+        payload.title,
+        payload.content,
+        payload.technology_app_item,
+        payload.user_priority,          # <-- passed to AI as urgency hint
+    )
     created_on = datetime.utcnow()
     sla = compute_sla(result.priority, result.difficulty, created_on)
 
@@ -89,6 +83,7 @@ def create_ticket(
         customer=current_user.customer or "N/A",
         created_on=created_on,
         technology_app_item=payload.technology_app_item,
+        user_priority=payload.user_priority,    # <-- stored on the ticket
         severity=Severity(result.suggested_severity) if result.suggested_severity in Severity._value2member_map_ else Severity.medium,
         category=result.category,
         priority=result.priority,
@@ -109,6 +104,7 @@ def create_ticket(
         db, ticket, "AI System",
         f"Ticket auto-classified as {result.category} / {result.priority} / "
         f"{result.difficulty} difficulty, routed to {result.assigned_team}. "
+        f"User urgency: {payload.user_priority}/5. "
         f"Target resolution: {hours}h by {sla['due_by'].strftime('%b %d, %H:%M UTC')} "
         f"(confidence {result.confidence}%).",
     )
@@ -117,29 +113,17 @@ def create_ticket(
     return ticket
 
 
-# ------------------------------------------------------------------
-# GET /tickets/{ticket_no}
-# Public by ticket_no -- no login required, returns full detail
-# ------------------------------------------------------------------
 @router.get("/{ticket_no}", response_model=TicketOut)
 def get_ticket(
     ticket_no: str,
     db: Session = Depends(get_db),
 ):
-    """
-    Anyone with the ticket number can check the full detail --
-    no login required. This replaces the old /tickets/track/{ticket_no}
-    now that users don't have accounts.
-    """
     ticket = db.query(Ticket).filter(Ticket.ticket_no == ticket_no).first()
     if not ticket:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No ticket found with that ticket number")
     return ticket
 
 
-# ------------------------------------------------------------------
-# PATCH /tickets/{ticket_no}  -- admin: update status/assignment/etc
-# ------------------------------------------------------------------
 @router.patch("/{ticket_no}", response_model=TicketOut)
 def update_ticket(
     ticket_no: str,
@@ -205,9 +189,6 @@ def update_ticket(
     return ticket
 
 
-# ------------------------------------------------------------------
-# DELETE /tickets/{ticket_no}  -- admin only
-# ------------------------------------------------------------------
 @router.delete("/{ticket_no}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_ticket(
     ticket_no: str,
@@ -221,9 +202,6 @@ def delete_ticket(
     db.commit()
 
 
-# ------------------------------------------------------------------
-# POST /tickets/{ticket_no}/analyze  -- admin: re-run AI classifier
-# ------------------------------------------------------------------
 @router.post("/{ticket_no}/analyze", response_model=TicketOut)
 def reanalyze_ticket(
     ticket_no: str,
@@ -234,7 +212,12 @@ def reanalyze_ticket(
     if not ticket:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket not found")
 
-    result = classify_ticket(ticket.title, ticket.content, ticket.technology_app_item)
+    result = classify_ticket(
+        ticket.title,
+        ticket.content,
+        ticket.technology_app_item,
+        ticket.user_priority or 3,     # <-- reuse stored user_priority on re-analysis
+    )
     sla = compute_sla(result.priority, result.difficulty, ticket.created_on)
 
     ticket.category = result.category
@@ -259,10 +242,6 @@ def reanalyze_ticket(
     return ticket
 
 
-# ------------------------------------------------------------------
-# POST /tickets/{ticket_no}/comments  -- owner or admin
-# GET  /tickets/{ticket_no}/comments  -- owner or admin
-# ------------------------------------------------------------------
 @router.post("/{ticket_no}/comments", response_model=CommentOut)
 def add_comment(
     ticket_no: str,

@@ -10,7 +10,7 @@ from database import Base
 
 
 def gen_ticket_no() -> str:
-    """Public-facing ticket id users use to track status, e.g. TCK-2026-00001-AB12."""
+    """Public-facing ticket id users use to track status, e.g. TCK-20260630-AB12CD."""
     return f"TCK-{datetime.utcnow().strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
 
 
@@ -42,8 +42,8 @@ class User(Base):
     email = Column(String(150), unique=True, index=True, nullable=False)
     hashed_password = Column(String(255), nullable=False)
     role = Column(Enum(UserRole), default=UserRole.user, nullable=False)
-    customer = Column(String(150), nullable=True)  # company/department, used for ticket "Customer" field
-    is_active = Column(Integer, default=1)  # 1/0 instead of Boolean for sqlite simplicity
+    customer = Column(String(150), nullable=True)
+    is_active = Column(Integer, default=1)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     tickets = relationship("Ticket", back_populates="owner", foreign_keys="Ticket.author_id")
@@ -59,57 +59,60 @@ class Ticket(Base):
     title = Column(String(255), nullable=False)
     content = Column(Text, nullable=False)
     status = Column(Enum(TicketStatus), default=TicketStatus.open, nullable=False)
-    author = Column(String(150), nullable=False)            # display name snapshot at creation time
-    customer = Column(String(150), nullable=False)           # company/department
+    author = Column(String(150), nullable=False)
+    customer = Column(String(150), nullable=False)
     created_on = Column(DateTime, default=datetime.utcnow, nullable=False)
-    ticket_start_date = Column(DateTime, nullable=True)       # set when an engineer starts work
-    ticket_closed_date = Column(DateTime, nullable=True)      # set when status -> Closed
+    ticket_start_date = Column(DateTime, nullable=True)
+    ticket_closed_date = Column(DateTime, nullable=True)
     technology_app_item = Column(String(150), nullable=False)
     severity = Column(Enum(Severity), nullable=False)
     assigned_engineer = Column(String(150), nullable=True)
-    closed_ticket = Column(String(150), nullable=True)        # name of person who closed it
+    closed_ticket = Column(String(150), nullable=True)
+
+    # --- user input ---
+    user_priority = Column(Integer, nullable=True)  # 1-5, self-reported urgency by the user
 
     # --- system / relational fields ---
     author_id = Column(Integer, ForeignKey("users.id"), nullable=False)
 
     # --- AI-generated fields (filled by classifier.py) ---
-    category = Column(String(100), nullable=True)             # e.g. Network, Hardware, Software, Access
-    priority = Column(String(20), nullable=True)               # P1-P4
-    difficulty = Column(String(10), nullable=True)             # Easy / Medium / Hard
-    assigned_team = Column(String(100), nullable=True)         # routing target
-    ai_recommended_steps = Column(JSON, nullable=True)         # list[str]
-    ai_confidence = Column(Integer, nullable=True)             # 0-100
+    category = Column(String(100), nullable=True)
+    priority = Column(String(20), nullable=True)       # P1-P4 (AI final call)
+    difficulty = Column(String(10), nullable=True)     # Easy / Medium / Hard
+    assigned_team = Column(String(100), nullable=True)
+    ai_recommended_steps = Column(JSON, nullable=True)
+    ai_confidence = Column(Integer, nullable=True)
     ai_summary = Column(Text, nullable=True)
 
-    # --- SLA time budget (derived from priority + difficulty at classification time) ---
-    sla_minutes = Column(Integer, nullable=True)                # target minutes to resolve
-    due_by = Column(DateTime, nullable=True)                    # created_on + sla_minutes
+    # --- SLA time budget ---
+    sla_minutes = Column(Integer, nullable=True)
+    due_by = Column(DateTime, nullable=True)
 
     owner = relationship("User", back_populates="tickets", foreign_keys=[author_id])
     comments = relationship("TicketComment", back_populates="ticket", cascade="all, delete-orphan")
 
     @property
     def age(self) -> int:
-        """Age of ticket in days, computed live (matches dataset's 'Age' column)."""
+        """Age of ticket in days, computed live."""
         end = self.ticket_closed_date or datetime.utcnow()
         return max((end - self.created_on).days, 0)
 
     @property
     def sla_status(self) -> str:
-        """On Track / At Risk / Overdue / Met / Breached -- see classifier.sla_status()."""
+        """On Track / At Risk / Overdue / Met / Breached."""
         from classifier import sla_status as compute_status
         return compute_status(self.status.value, self.due_by, self.ticket_closed_date)
 
 
 class TicketComment(Base):
-    """Activity log / notes thread on a ticket (admin updates, AI notes, status changes)."""
+    """Activity log / notes thread on a ticket."""
     __tablename__ = "ticket_comments"
 
     id = Column(Integer, primary_key=True, index=True)
     ticket_id = Column(Integer, ForeignKey("tickets.id"), nullable=False)
     author_name = Column(String(150), nullable=False)
     message = Column(Text, nullable=False)
-    is_system = Column(Integer, default=0)  # 1 if auto-generated (status change, AI run, etc.)
+    is_system = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     ticket = relationship("Ticket", back_populates="comments")

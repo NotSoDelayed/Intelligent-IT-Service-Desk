@@ -2,6 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
+
 # ---------- Auth / Users ----------
 
 class UserRegister(BaseModel):
@@ -40,6 +41,12 @@ class TicketCreate(BaseModel):
     title: str = Field(..., min_length=4, max_length=255)
     content: str = Field(..., min_length=10, description="Detailed description of the issue")
     technology_app_item: str = Field(..., description="e.g. VPN, Outlook, Laptop, ERP System")
+    user_priority: int = Field(
+        default=3,
+        ge=1,
+        le=5,
+        description="User-reported urgency: 1 = not urgent, 5 = critical / cannot work",
+    )
 
 
 class TicketUpdateAdmin(BaseModel):
@@ -86,6 +93,10 @@ class TicketOut(BaseModel):
     assigned_engineer: str | None = None
     closed_ticket: str | None = None
 
+    # user input
+    user_priority: int | None = None
+
+    # AI-generated
     category: str | None = None
     priority: str | None = None
     difficulty: str | None = None
@@ -94,6 +105,7 @@ class TicketOut(BaseModel):
     ai_confidence: int | None = None
     ai_summary: str | None = None
 
+    # SLA
     sla_minutes: int | None = None
     due_by: datetime | None = None
     sla_status: str | None = None
@@ -118,10 +130,11 @@ class TicketListOut(BaseModel):
     created_on: datetime
     due_by: datetime | None = None
     sla_status: str | None = None
+    user_priority: int | None = None
 
 
 class TicketTrackOut(BaseModel):
-    """Public 'check my ticket status' response -- intentionally minimal."""
+    """Public ticket status check by ticket number."""
     ticket_no: str
     title: str
     status: str
@@ -135,6 +148,7 @@ class TicketTrackOut(BaseModel):
     due_by: datetime | None = None
     sla_status: str | None = None
     age: int
+    user_priority: int | None = None
 
 
 # ---------- Dashboard ----------
@@ -155,4 +169,4 @@ class DashboardStats(BaseModel):
     sla_overdue: int
     sla_met: int
     sla_breached: int
-    sla_compliance_rate: float | None = None  # % of resolved tickets that met SLA
+    sla_compliance_rate: float | None = None
