@@ -10,10 +10,8 @@ from config import settings
 from database import get_db
 from models import User, UserRole
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login/form")
 
-# bcrypt only uses the first 72 bytes of input -- truncate explicitly so
-# behavior is predictable instead of relying on bcrypt's silent cutoff.
 _MAX_PASSWORD_BYTES = 72
 
 

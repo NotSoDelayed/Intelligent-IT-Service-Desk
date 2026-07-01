@@ -4,10 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from activity_log import log_activity
-from auth import get_current_admin, get_current_user
+from auth import get_current_admin
 from classifier import classify_ticket, compute_sla
 from database import get_db
-from models import Severity, Ticket, TicketComment, TicketStatus, User, UserRole
+from models import Severity, Ticket, TicketComment, TicketStatus, User
 from schemas import (
     CommentCreate,
     CommentOut,
@@ -20,51 +20,16 @@ from schemas import (
 router = APIRouter(prefix="/tickets", tags=["Tickets"])
 
 
-@router.get("", response_model=list[TicketListOut])
-def list_tickets(
-    status_filter: str | None = Query(None, alias="status"),
-    severity_filter: str | None = Query(None, alias="severity"),
-    category_filter: str | None = Query(None, alias="category"),
-    assigned_team: str | None = None,
-    sort: str = Query("queue", description="'queue' (SLA deadline order) or 'newest'"),
-    search: str | None = Query(None, description="Search by title or ticket no. (admin only)"),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    q = db.query(Ticket)
-
-    if current_user.role != UserRole.admin:
-        q = q.filter(Ticket.author_id == current_user.id)
-
-    if status_filter:
-        q = q.filter(Ticket.status == status_filter)
-    if severity_filter:
-        q = q.filter(Ticket.severity == severity_filter)
-    if category_filter:
-        q = q.filter(Ticket.category == category_filter)
-    if assigned_team:
-        q = q.filter(Ticket.assigned_team == assigned_team)
-
-    if search and current_user.role == UserRole.admin:
-        like = f"%{search}%"
-        q = q.filter(
-            (Ticket.title.ilike(like)) | (Ticket.ticket_no.ilike(like))
-        )
-
-    if sort == "newest" or current_user.role != UserRole.admin:
-        q = q.order_by(Ticket.created_on.desc())
-    else:
-        q = q.order_by(Ticket.due_by.asc().nullslast())
-
-    return q.all()
-
-
 @router.post("", response_model=TicketOut, status_code=status.HTTP_201_CREATED)
 def create_ticket(
     payload: TicketCreate,
-    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    """
+    Anyone can submit a ticket -- no account or login needed.
+    AI classification and SLA calculation run automatically.
+    Returns the ticket_no so the user can track progress later.
+    """
     result = classify_ticket(
         payload.title,
         payload.content,
@@ -78,9 +43,10 @@ def create_ticket(
         title=payload.title,
         content=payload.content,
         status=TicketStatus.open,
-        author=current_user.full_name,
-        author_id=current_user.id,
-        department=current_user.department or "N/A",
+        author=payload.name,
+        author_email=payload.email,
+        author_id=None,
+        department=payload.department,
         created_on=created_on,
         technology_app_item=payload.technology_app_item,
         user_priority=payload.user_priority,
@@ -113,11 +79,50 @@ def create_ticket(
     return ticket
 
 
+@router.get("", response_model=list[TicketListOut])
+def list_tickets(
+    status_filter: str | None = Query(None, alias="status"),
+    severity_filter: str | None = Query(None, alias="severity"),
+    category_filter: str | None = Query(None, alias="category"),
+    assigned_team: str | None = None,
+    sort: str = Query("queue", description="'queue' (SLA deadline order) or 'newest'"),
+    search: str | None = Query(None, description="Search by title or ticket no."),
+    current_admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    q = db.query(Ticket)
+
+    if status_filter:
+        q = q.filter(Ticket.status == status_filter)
+    if severity_filter:
+        q = q.filter(Ticket.severity == severity_filter)
+    if category_filter:
+        q = q.filter(Ticket.category == category_filter)
+    if assigned_team:
+        q = q.filter(Ticket.assigned_team == assigned_team)
+    if search:
+        like = f"%{search}%"
+        q = q.filter(
+            (Ticket.title.ilike(like)) | (Ticket.ticket_no.ilike(like))
+        )
+
+    if sort == "newest":
+        q = q.order_by(Ticket.created_on.desc())
+    else:
+        q = q.order_by(Ticket.due_by.asc().nullslast())
+
+    return q.all()
+
+
 @router.get("/{ticket_no}", response_model=TicketOut)
 def get_ticket(
     ticket_no: str,
     db: Session = Depends(get_db),
 ):
+    """
+    Anyone with the ticket number can check status --
+    no login required. This is the track my ticket endpoint.
+    """
     ticket = db.query(Ticket).filter(Ticket.ticket_no == ticket_no).first()
     if not ticket:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No ticket found with that ticket number")
@@ -246,18 +251,16 @@ def reanalyze_ticket(
 def add_comment(
     ticket_no: str,
     payload: CommentCreate,
-    current_user: User = Depends(get_current_user),
+    current_admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
     ticket = db.query(Ticket).filter(Ticket.ticket_no == ticket_no).first()
     if not ticket:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket not found")
-    if current_user.role != UserRole.admin and ticket.author_id != current_user.id:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "You don't have access to this ticket")
 
     comment = TicketComment(
         ticket_id=ticket.id,
-        author_name=current_user.full_name,
+        author_name=current_admin.full_name,
         message=payload.message,
         is_system=0,
     )
@@ -270,14 +273,12 @@ def add_comment(
 @router.get("/{ticket_no}/comments", response_model=list[CommentOut])
 def list_comments(
     ticket_no: str,
-    current_user: User = Depends(get_current_user),
+    current_admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
     ticket = db.query(Ticket).filter(Ticket.ticket_no == ticket_no).first()
     if not ticket:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket not found")
-    if current_user.role != UserRole.admin and ticket.author_id != current_user.id:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "You don't have access to this ticket")
     return (
         db.query(TicketComment)
         .filter(TicketComment.ticket_id == ticket.id)

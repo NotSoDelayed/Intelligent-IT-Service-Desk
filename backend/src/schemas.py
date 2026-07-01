@@ -3,7 +3,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
-# ---------- Auth / Users ----------
+# ---------- Auth / Users (admin accounts only) ----------
 
 class UserRegister(BaseModel):
     full_name: str = Field(..., min_length=2, max_length=150)
@@ -37,7 +37,17 @@ class Token(BaseModel):
 # ---------- Tickets ----------
 
 class TicketCreate(BaseModel):
-    """What a normal user submits when filing a new ticket."""
+    """
+    What anyone submits when filing a new ticket -- no account needed.
+    Submitter info (name, email, department) is collected directly on
+    the form since users do not have login accounts.
+    """
+    # submitter info -- collected on the form, no account needed
+    name: str = Field(..., min_length=2, max_length=150, description="Your full name")
+    email: EmailStr = Field(..., description="Your email address")
+    department: str = Field(..., description="Your department e.g. Finance Dept")
+
+    # ticket info
     title: str = Field(..., min_length=4, max_length=255)
     content: str = Field(..., min_length=10, description="Detailed description of the issue")
     technology_app_item: str = Field(..., description="e.g. VPN, Outlook, Laptop, ERP System")
@@ -45,7 +55,7 @@ class TicketCreate(BaseModel):
         default=3,
         ge=1,
         le=5,
-        description="User-reported urgency: 1 = not urgent, 5 = critical / cannot work",
+        description="Your urgency level: 1 = not urgent, 5 = critical / cannot work",
     )
 
 
@@ -83,6 +93,7 @@ class TicketOut(BaseModel):
     content: str
     status: str
     author: str
+    author_email: str
     age: int
     department: str
     created_on: datetime
@@ -126,6 +137,7 @@ class TicketListOut(BaseModel):
     assigned_engineer: str | None = None
     department: str
     author: str
+    author_email: str
     age: int
     created_on: datetime
     due_by: datetime | None = None

@@ -10,7 +10,7 @@ from database import Base
 
 
 def gen_ticket_no() -> str:
-    """Public-facing ticket id users use to track status, e.g. TCK-20260630-AB12CD."""
+    """Public-facing ticket id, e.g. TCK-20260701-AB12CD."""
     return f"TCK-{datetime.utcnow().strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
 
 
@@ -42,7 +42,7 @@ class User(Base):
     email = Column(String(150), unique=True, index=True, nullable=False)
     hashed_password = Column(String(255), nullable=False)
     role = Column(Enum(UserRole), default=UserRole.user, nullable=False)
-    department = Column(String(150), nullable=True)  # company/department name
+    department = Column(String(150), nullable=True)
     is_active = Column(Integer, default=1)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -59,8 +59,9 @@ class Ticket(Base):
     title = Column(String(255), nullable=False)
     content = Column(Text, nullable=False)
     status = Column(Enum(TicketStatus), default=TicketStatus.open, nullable=False)
-    author = Column(String(150), nullable=False)
-    department = Column(String(150), nullable=False)   # maps to dataset "Customer" column
+    author = Column(String(150), nullable=False)        # submitter name
+    author_email = Column(String(150), nullable=False)  # submitter email
+    department = Column(String(150), nullable=False)    # maps to dataset "Customer" column
     created_on = Column(DateTime, default=datetime.utcnow, nullable=False)
     ticket_start_date = Column(DateTime, nullable=True)
     ticket_closed_date = Column(DateTime, nullable=True)
@@ -70,12 +71,13 @@ class Ticket(Base):
     closed_ticket = Column(String(150), nullable=True)
 
     # --- user input ---
-    user_priority = Column(Integer, nullable=True)  # 1-5, self-reported urgency
+    user_priority = Column(Integer, nullable=True)
 
     # --- system / relational fields ---
-    author_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    # nullable because tickets are submitted without a user account
+    author_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
-    # --- AI-generated fields (filled by classifier.py) ---
+    # --- AI-generated fields ---
     category = Column(String(100), nullable=True)
     priority = Column(String(20), nullable=True)
     difficulty = Column(String(10), nullable=True)
