@@ -45,7 +45,7 @@ function loadSession(): User | null {
 function saveSession(user: User): void {
   const session: StoredSession = {
     user,
-    expiresAt: Date.now() + SESSION_DURATION_MS * 1000 * 60 * 60,
+    expiresAt: Date.now() + SESSION_DURATION_MS * 1000 * 60,
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
 }
