@@ -3,9 +3,13 @@ import { cn } from '@/lib/utils';
 import type { TicketCategory } from '@/types/ticket';
 
 const categoryConfig: Record<TicketCategory, { label: string }> = {
-  category1: { label: 'Category 1' },
-  category2: { label: 'Category 2' },
-  category3: { label: 'Category 3' },
+  hardware: { label: 'Hardware' },
+  software: { label: 'Software' },
+  network: { label: 'Network' },
+  security: { label: 'Security' },
+  access: { label: 'Access' },
+  email: { label: 'Email' },
+  other: { label: 'Other' },
 };
 
 interface CategoryBadgeProps {

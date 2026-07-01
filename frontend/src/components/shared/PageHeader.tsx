@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -30,16 +30,16 @@ export function PageHeader({ title, description, breadcrumbs, actions }: PageHea
             {breadcrumbs.map((crumb, index) => {
               const isLast = index === breadcrumbs.length - 1;
               return (
-                <Fragment key={crumb.label}>
-                  <BreadcrumbItem>
-                    {isLast ? (
-                      <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
-                    ) : (
+                <BreadcrumbItem key={crumb.label}>
+                  {isLast ? (
+                    <BreadcrumbPage>{crumb.label}</BreadcrumbPage>
+                  ) : (
+                    <>
                       <BreadcrumbLink href={crumb.href}>{crumb.label}</BreadcrumbLink>
-                    )}
-                  </BreadcrumbItem>
-                  {!isLast && <BreadcrumbSeparator />}
-                </Fragment>
+                      <BreadcrumbSeparator />
+                    </>
+                  )}
+                </BreadcrumbItem>
               );
             })}
           </BreadcrumbList>

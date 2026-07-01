@@ -1,8 +1,7 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { BarChart3, LayoutDashboard, PlusCircle, Settings, TicketCheck, X } from 'lucide-react';
+import { BarChart3, LayoutDashboard, Settings, TicketCheck, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useAuth } from '@/providers/AuthProvider';
 import { useSidebar } from './SidebarContext';
 
 interface NavItem {
@@ -11,31 +10,21 @@ interface NavItem {
   icon: React.ComponentType<{ className?: string }>;
 }
 
-const adminNavItems: NavItem[] = [
-  { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+const navItems: NavItem[] = [
+  { label: 'Dashboard', href: '/', icon: LayoutDashboard },
   { label: 'Tickets', href: '/tickets', icon: TicketCheck },
   { label: 'Analytics', href: '/analytics', icon: BarChart3 },
   { label: 'Settings', href: '/settings', icon: Settings },
 ];
 
-const userNavItems: NavItem[] = [
-  { label: 'My Tickets', href: '/my-tickets', icon: TicketCheck },
-  { label: 'New Ticket', href: '/tickets/new', icon: PlusCircle },
-];
-
 function isActive(pathname: string, href: string): boolean {
-  return pathname === href || pathname.startsWith(href + '/');
+  if (href === '/') return pathname === '/';
+  return pathname.startsWith(href);
 }
 
 export function Sidebar() {
   const { isOpen, isCollapsed, viewport, close } = useSidebar();
-  const { user } = useAuth();
   const { pathname } = useLocation();
-
-  const navItems = useMemo(
-    () => (user?.role === 'admin' ? adminNavItems : userNavItems),
-    [user?.role]
-  );
 
   const handleNavClick = useCallback(() => {
     // Close drawer on mobile after navigation
@@ -122,7 +111,7 @@ function SidebarHeader({
       ) : (
         <Link to="/" className="flex items-center gap-2 text-sidebar-foreground">
           <TicketCheck className="size-5 text-primary" />
-          <span className="text-base font-semibold tracking-tight">Intelligent Service Desk</span>
+          <span className="text-base font-semibold tracking-tight">ServiceDesk AI</span>
         </Link>
       )}
 
