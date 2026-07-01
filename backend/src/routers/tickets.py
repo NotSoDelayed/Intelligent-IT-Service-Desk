@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from activity_log import log_activity
-from auth import get_current_user
+from auth import get_current_admin, get_current_user
 from classifier import classify_ticket, compute_sla
 from database import get_db
 from models import Severity, Ticket, TicketComment, TicketStatus, User, UserRole
@@ -14,23 +14,68 @@ from schemas import (
     TicketCreate,
     TicketListOut,
     TicketOut,
-    TicketTrackOut,
+    TicketUpdateAdmin,
 )
 
-router = APIRouter(prefix="/tickets", tags=["Tickets - User"])
+router = APIRouter(prefix="/tickets", tags=["Tickets"])
 
 
+# ------------------------------------------------------------------
+# GET /tickets
+# Admin  → all tickets, filterable + SLA-sorted
+# User   → own tickets only
+# ------------------------------------------------------------------
+@router.get("", response_model=list[TicketListOut])
+def list_tickets(
+    status_filter: str | None = Query(None, alias="status"),
+    severity_filter: str | None = Query(None, alias="severity"),
+    category_filter: str | None = Query(None, alias="category"),
+    assigned_team: str | None = None,
+    sort: str = Query("queue", description="'queue' (SLA deadline order) or 'newest'"),
+    search: str | None = Query(None, description="Search by title or ticket no. (admin only)"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    q = db.query(Ticket)
+
+    # non-admins can only see their own tickets
+    if current_user.role != UserRole.admin:
+        q = q.filter(Ticket.author_id == current_user.id)
+
+    if status_filter:
+        q = q.filter(Ticket.status == status_filter)
+    if severity_filter:
+        q = q.filter(Ticket.severity == severity_filter)
+    if category_filter:
+        q = q.filter(Ticket.category == category_filter)
+    if assigned_team:
+        q = q.filter(Ticket.assigned_team == assigned_team)
+
+    # search only applies for admin
+    if search and current_user.role == UserRole.admin:
+        like = f"%{search}%"
+        q = q.filter(
+            (Ticket.title.ilike(like)) | (Ticket.ticket_no.ilike(like))
+        )
+
+    if sort == "newest" or current_user.role != UserRole.admin:
+        q = q.order_by(Ticket.created_on.desc())
+    else:
+        # admin queue: soonest SLA deadline first
+        q = q.order_by(Ticket.due_by.asc().nullslast())
+
+    return q.all()
+
+
+# ------------------------------------------------------------------
+# POST /tickets  -- submit a new ticket (AI + SLA run automatically)
+# ------------------------------------------------------------------
 @router.post("", response_model=TicketOut, status_code=status.HTTP_201_CREATED)
 def create_ticket(
     payload: TicketCreate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    A normal user submits a new ticket. The AI classifier runs immediately
-    so the ticket is born with category/priority/team/recommended steps
-    already populated -- no manual triage needed.
-    """
     result = classify_ticket(payload.title, payload.content, payload.technology_app_item)
     created_on = datetime.utcnow()
     sla = compute_sla(result.priority, result.difficulty, created_on)
@@ -60,33 +105,31 @@ def create_ticket(
     db.refresh(ticket)
 
     hours = round(sla["sla_minutes"] / 60, 1)
-    log_activity(db, ticket, "AI System",
-                 f"Ticket auto-classified as {result.category} / {result.priority} / {result.difficulty} difficulty, "
-                 f"routed to {result.assigned_team}. Target resolution: {hours}h by {sla['due_by'].strftime('%b %d, %H:%M UTC')} "
-                 f"(confidence {result.confidence}%).")
+    log_activity(
+        db, ticket, "AI System",
+        f"Ticket auto-classified as {result.category} / {result.priority} / "
+        f"{result.difficulty} difficulty, routed to {result.assigned_team}. "
+        f"Target resolution: {hours}h by {sla['due_by'].strftime('%b %d, %H:%M UTC')} "
+        f"(confidence {result.confidence}%).",
+    )
     db.commit()
 
     return ticket
 
 
-@router.get("/my", response_model=list[TicketListOut])
-def list_my_tickets(
-    status_filter: str | None = Query(None, alias="status"),
-    current_user: User = Depends(get_current_user),
+# ------------------------------------------------------------------
+# GET /tickets/{ticket_no}
+# Public by ticket_no -- no login required, returns full detail
+# ------------------------------------------------------------------
+@router.get("/{ticket_no}", response_model=TicketOut)
+def get_ticket(
+    ticket_no: str,
     db: Session = Depends(get_db),
 ):
-    q = db.query(Ticket).filter(Ticket.author_id == current_user.id)
-    if status_filter:
-        q = q.filter(Ticket.status == status_filter)
-    return q.order_by(Ticket.created_on.desc()).all()
-
-
-@router.get("/track/{ticket_no}", response_model=TicketTrackOut)
-def track_ticket(ticket_no: str, db: Session = Depends(get_db)):
     """
-    Public-style lookup: any logged-in user can check progress with just
-    the ticket number they were given on submission (no need to be the
-    owner -- mirrors a real 'track my ticket' flow). Minimal fields only.
+    Anyone with the ticket number can check the full detail --
+    no login required. This replaces the old /tickets/track/{ticket_no}
+    now that users don't have accounts.
     """
     ticket = db.query(Ticket).filter(Ticket.ticket_no == ticket_no).first()
     if not ticket:
@@ -94,20 +137,132 @@ def track_ticket(ticket_no: str, db: Session = Depends(get_db)):
     return ticket
 
 
-@router.get("/{ticket_no}", response_model=TicketOut)
-def get_ticket_detail(
+# ------------------------------------------------------------------
+# PATCH /tickets/{ticket_no}  -- admin: update status/assignment/etc
+# ------------------------------------------------------------------
+@router.patch("/{ticket_no}", response_model=TicketOut)
+def update_ticket(
     ticket_no: str,
-    current_user: User = Depends(get_current_user),
+    payload: TicketUpdateAdmin,
+    current_admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
     ticket = db.query(Ticket).filter(Ticket.ticket_no == ticket_no).first()
     if not ticket:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket not found")
-    if current_user.role != UserRole.admin and ticket.author_id != current_user.id:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "You don't have access to this ticket")
+
+    changes = []
+
+    if payload.status and payload.status != ticket.status.value:
+        old = ticket.status.value
+        ticket.status = TicketStatus(payload.status)
+        if ticket.status == TicketStatus.in_progress and not ticket.ticket_start_date:
+            ticket.ticket_start_date = datetime.utcnow()
+        if ticket.status == TicketStatus.closed:
+            ticket.ticket_closed_date = datetime.utcnow()
+            ticket.closed_ticket = current_admin.full_name
+        changes.append(f"status: {old} -> {ticket.status.value}")
+
+    if payload.severity and payload.severity != ticket.severity.value:
+        old = ticket.severity.value
+        ticket.severity = Severity(payload.severity)
+        changes.append(f"severity: {old} -> {ticket.severity.value}")
+
+    if payload.assigned_engineer and payload.assigned_engineer != ticket.assigned_engineer:
+        ticket.assigned_engineer = payload.assigned_engineer
+        changes.append(f"assigned engineer: {ticket.assigned_engineer}")
+
+    if payload.category:
+        ticket.category = payload.category
+        changes.append(f"category: {ticket.category}")
+
+    if payload.priority:
+        ticket.priority = payload.priority
+        changes.append(f"priority: {ticket.priority}")
+
+    if payload.difficulty:
+        ticket.difficulty = payload.difficulty
+        changes.append(f"difficulty: {ticket.difficulty}")
+
+    if payload.priority or payload.difficulty:
+        sla = compute_sla(ticket.priority, ticket.difficulty or "Medium", ticket.created_on)
+        ticket.sla_minutes = sla["sla_minutes"]
+        ticket.due_by = sla["due_by"]
+        changes.append(
+            f"SLA recalculated: {round(sla['sla_minutes']/60, 1)}h "
+            f"by {sla['due_by'].strftime('%b %d, %H:%M UTC')}"
+        )
+
+    if payload.assigned_team:
+        ticket.assigned_team = payload.assigned_team
+        changes.append(f"team: {ticket.assigned_team}")
+
+    if changes:
+        log_activity(db, ticket, current_admin.full_name, "Updated " + "; ".join(changes))
+
+    db.commit()
+    db.refresh(ticket)
     return ticket
 
 
+# ------------------------------------------------------------------
+# DELETE /tickets/{ticket_no}  -- admin only
+# ------------------------------------------------------------------
+@router.delete("/{ticket_no}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_ticket(
+    ticket_no: str,
+    current_admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    ticket = db.query(Ticket).filter(Ticket.ticket_no == ticket_no).first()
+    if not ticket:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket not found")
+    db.delete(ticket)
+    db.commit()
+
+
+# ------------------------------------------------------------------
+# POST /tickets/{ticket_no}/analyze  -- admin: re-run AI classifier
+# ------------------------------------------------------------------
+@router.post("/{ticket_no}/analyze", response_model=TicketOut)
+def reanalyze_ticket(
+    ticket_no: str,
+    current_admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    ticket = db.query(Ticket).filter(Ticket.ticket_no == ticket_no).first()
+    if not ticket:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket not found")
+
+    result = classify_ticket(ticket.title, ticket.content, ticket.technology_app_item)
+    sla = compute_sla(result.priority, result.difficulty, ticket.created_on)
+
+    ticket.category = result.category
+    ticket.priority = result.priority
+    ticket.difficulty = result.difficulty
+    ticket.assigned_team = result.assigned_team
+    ticket.ai_recommended_steps = result.recommended_steps
+    ticket.ai_confidence = result.confidence
+    ticket.ai_summary = result.summary
+    ticket.sla_minutes = sla["sla_minutes"]
+    ticket.due_by = sla["due_by"]
+
+    hours = round(sla["sla_minutes"] / 60, 1)
+    log_activity(
+        db, ticket, "AI System",
+        f"Re-analyzed: {result.category} / {result.priority} / {result.difficulty} difficulty, "
+        f"routed to {result.assigned_team}. Target resolution: {hours}h "
+        f"by {sla['due_by'].strftime('%b %d, %H:%M UTC')} (confidence {result.confidence}%).",
+    )
+    db.commit()
+    db.refresh(ticket)
+    return ticket
+
+
+# ------------------------------------------------------------------
+# POST /tickets/{ticket_no}/comments  -- owner or admin
+# GET  /tickets/{ticket_no}/comments  -- owner or admin
+# ------------------------------------------------------------------
 @router.post("/{ticket_no}/comments", response_model=CommentOut)
 def add_comment(
     ticket_no: str,
@@ -122,8 +277,10 @@ def add_comment(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You don't have access to this ticket")
 
     comment = TicketComment(
-        ticket_id=ticket.id, author_name=current_user.full_name,
-        message=payload.message, is_system=0,
+        ticket_id=ticket.id,
+        author_name=current_user.full_name,
+        message=payload.message,
+        is_system=0,
     )
     db.add(comment)
     db.commit()
@@ -142,5 +299,9 @@ def list_comments(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket not found")
     if current_user.role != UserRole.admin and ticket.author_id != current_user.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You don't have access to this ticket")
-    return db.query(TicketComment).filter(TicketComment.ticket_id == ticket.id)\
-        .order_by(TicketComment.created_at.asc()).all()
+    return (
+        db.query(TicketComment)
+        .filter(TicketComment.ticket_id == ticket.id)
+        .order_by(TicketComment.created_at.asc())
+        .all()
+    )
