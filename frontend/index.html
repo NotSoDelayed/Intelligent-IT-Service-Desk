@@ -1,29 +1,30 @@
 <!doctype html>
 <html lang="en" class="light">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta
-      name="description"
-      content="AI-powered Support Ticket Triage System — intelligent categorization, prioritization, and routing for enterprise IT service desks."
-    />
-    <title>ServiceDesk AI</title>
-    <script>
-      // Prevent flash of wrong theme by reading localStorage before React mounts
-      (function () {
-        const stored = localStorage.getItem('theme');
-        if (
-          stored === 'dark' ||
-          (!stored && window.matchMedia('(prefers-color-scheme: dark)').matches)
-        ) {
-          document.documentElement.classList.replace('light', 'dark');
-        }
-      })();
-    </script>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description"
+    content="AI-powered Support Ticket Triage System — intelligent categorization, prioritization, and routing for enterprise IT service desks." />
+  <title>Intelligent Service Desk</title>
+  <script>
+    // Prevent flash of wrong theme by reading localStorage before React mounts
+    (function () {
+      const stored = localStorage.getItem('theme');
+      if (
+        stored === 'dark' ||
+        (!stored && window.matchMedia('(prefers-color-scheme: dark)').matches)
+      ) {
+        document.documentElement.classList.replace('light', 'dark');
+      }
+    })();
+  </script>
+</head>
+
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+
 </html>
