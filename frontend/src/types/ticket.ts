@@ -2,7 +2,7 @@
 export type TicketPriority = 'low' | 'medium' | 'high' | 'critical';
 
 /** Ticket status lifecycle */
-export type TicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
+export type TicketStatus = 'open' | 'in_progress' | 'pending_user' | 'resolved' | 'closed';
 
 /** Support ticket categories */
 export type TicketCategory =

@@ -13,6 +13,11 @@ const statusConfig: Record<TicketStatus, { label: string; className: string }> =
     className:
       'bg-amber-500/10 text-amber-700 border-amber-500/20 dark:text-amber-400 dark:border-amber-400/20',
   },
+  pending_user: {
+    label: 'Pending User',
+    className:
+      'bg-violet-500/10 text-violet-700 border-violet-500/20 dark:text-violet-400 dark:border-violet-400/20',
+  },
   resolved: {
     label: 'Resolved',
     className:
