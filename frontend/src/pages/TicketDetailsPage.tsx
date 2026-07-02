@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   Bot,
   CalendarDays,
+  CheckCircle2,
   Clock3,
   Fingerprint,
   History,
@@ -35,6 +36,7 @@ import {
   getTicketComments,
   reanalyzeTicket,
   updateTicketStatus,
+  addTicketComment,
 } from '@/features/tickets/api/tickets';
 import type { TicketComment, TicketDetailDto } from '@/features/tickets/types';
 import {
@@ -44,6 +46,7 @@ import {
   toUiStatus,
 } from '@/features/tickets/utils/normalization';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Textarea } from '@/components/ui/textarea';
 
 export default function TicketDetailsPage() {
   const { id } = useParams<{ id: string }>();
@@ -51,6 +54,7 @@ export default function TicketDetailsPage() {
   const queryClient = useQueryClient();
   const [reanalyzeOpen, setReanalyzeOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
+  const [resolveOpen, setResolveOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
   const ticketQuery = useQuery({
@@ -94,6 +98,33 @@ export default function TicketDetailsPage() {
     },
     onError: () => {
       toast.error('We could not close this ticket. Please try again.');
+    },
+  });
+
+  const resolveMutation = useMutation({
+    mutationFn: () => updateTicketStatus(id ?? '', toBackendStatus('resolved')),
+    onSuccess: async (ticket) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['ticket', id] }),
+        queryClient.invalidateQueries({ queryKey: ['ticket-comments', id] }),
+      ]);
+      queryClient.setQueryData(['ticket', id], ticket);
+      toast.success('Ticket marked as done.');
+      setResolveOpen(false);
+    },
+    onError: () => {
+      toast.error('We could not mark this ticket as done. Please try again.');
+    },
+  });
+
+  const addCommentMutation = useMutation({
+    mutationFn: (message: string) => addTicketComment(id ?? '', { message }),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['ticket-comments', id] });
+      toast.success('Comment added successfully.');
+    },
+    onError: () => {
+      toast.error('We could not add your comment. Please try again.');
     },
   });
 
@@ -145,7 +176,6 @@ export default function TicketDetailsPage() {
     <div className="space-y-6">
       <PageHeader
         title={isLoading ? `Ticket #${id}` : `Ticket #${ticket?.ticket_no ?? id}`}
-        description="Review the full case record, timeline, and AI guidance."
         breadcrumbs={[
           { label: 'Dashboard', href: '/' },
           { label: 'Tickets', href: '/tickets' },
@@ -169,6 +199,14 @@ export default function TicketDetailsPage() {
             </Button>
             <Button
               variant="outline"
+              onClick={() => setResolveOpen(true)}
+              disabled={resolveMutation.isPending || isLoading || ticket?.status === 'Resolved' || ticket?.status === 'Closed'}
+            >
+              <CheckCircle2 className="size-4" />
+              Mark as Done
+            </Button>
+            <Button
+              variant="outline"
               onClick={() => setCloseOpen(true)}
               disabled={closeMutation.isPending || isLoading || ticket?.status === 'Closed'}
             >
@@ -187,7 +225,15 @@ export default function TicketDetailsPage() {
         }
       />
 
-      {isLoading ? <TicketDetailsSkeleton /> : ticket && <TicketDetailsContent ticket={ticket} comments={comments} timeline={timeline} />}
+      {isLoading ? <TicketDetailsSkeleton /> : ticket && (
+        <TicketDetailsContent
+          ticket={ticket}
+          comments={comments}
+          timeline={timeline}
+          onAddComment={(msg) => addCommentMutation.mutateAsync(msg)}
+          isAddingComment={addCommentMutation.isPending}
+        />
+      )}
 
       <ConfirmationDialog
         open={reanalyzeOpen}
@@ -210,6 +256,16 @@ export default function TicketDetailsPage() {
         }}
       />
       <ConfirmationDialog
+        open={resolveOpen}
+        onOpenChange={setResolveOpen}
+        title="Mark ticket as done?"
+        description="This will mark the ticket as resolved."
+        confirmLabel="Mark as Done"
+        onConfirm={async () => {
+          await resolveMutation.mutateAsync();
+        }}
+      />
+      <ConfirmationDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
         title="Delete ticket?"
@@ -228,16 +284,32 @@ function TicketDetailsContent({
   ticket,
   comments,
   timeline,
+  onAddComment,
+  isAddingComment,
 }: {
   ticket: TicketDetailDto;
   comments: TicketComment[];
   timeline: TimelineEvent[];
+  onAddComment: (msg: string) => Promise<void>;
+  isAddingComment: boolean;
 }) {
+  const [newComment, setNewComment] = useState('');
+
+  const handleAddComment = async () => {
+    if (!newComment.trim()) return;
+    try {
+      await onAddComment(newComment);
+      setNewComment('');
+    } catch {
+      // Error is handled in the mutation
+    }
+  };
+
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(320px,1fr)]">
       <div className="space-y-6">
         <Card>
-          <CardHeader className="space-y-4">
+          <CardHeader className="space-y-4 p-6">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
@@ -265,10 +337,33 @@ function TicketDetailsContent({
         </Card>
 
         <Card>
-          <CardHeader>
+          <CardHeader className="p-6">
             <CardTitle>Conversation & Timeline</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4 p-6 pt-0">
+            <div className="space-y-3 rounded-xl border border-border bg-muted/20 p-2">
+              <Textarea
+                placeholder="Type your comment here..."
+                value={newComment}
+                onChange={(e) => setNewComment(e.target.value)}
+                disabled={isAddingComment}
+                className="min-h-[100px] resize-none bg-background"
+              />
+              <div className="flex justify-end">
+                <Button
+                  onClick={handleAddComment}
+                  disabled={!newComment.trim() || isAddingComment}
+                >
+                  Add Comment
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 text-sm font-medium text-foreground pt-2">
+              <History className="size-4 text-muted-foreground" />
+              Activity History
+            </div>
+
             {timeline.map((event) => (
               <div key={event.id} className="flex gap-4 rounded-xl border border-border p-4">
                 <div
@@ -290,25 +385,6 @@ function TicketDetailsContent({
                 </div>
               </div>
             ))}
-
-            {comments.length > 0 && (
-              <div className="space-y-4 pt-2">
-                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                  <History className="size-4 text-muted-foreground" />
-                  Comments
-                </div>
-                {comments.map((comment) => (
-                  <div key={comment.id} className="rounded-xl border border-border p-4">
-                    <div className="flex flex-wrap items-center gap-2 text-sm">
-                      <span className="font-medium text-foreground">{comment.author_name}</span>
-                      <span className="text-muted-foreground">{formatDateTime(comment.created_at)}</span>
-                      {comment.is_system ? <Badge variant="secondary">System</Badge> : null}
-                    </div>
-                    <p className="mt-2 text-sm text-muted-foreground">{comment.message}</p>
-                  </div>
-                ))}
-              </div>
-            )}
           </CardContent>
         </Card>
       </div>
@@ -330,10 +406,10 @@ function TicketDetailsContent({
         </div>
 
         <Card>
-          <CardHeader>
+          <CardHeader className="p-6">
             <CardTitle>Ticket Details</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4 text-sm">
+          <CardContent className="space-y-4 text-sm p-6 pt-0">
             <DetailRow icon={<CalendarDays className="size-4" />} label="Created" value={formatDateTime(ticket.created_on)} />
             <DetailRow icon={<Clock3 className="size-4" />} label="Age" value={`${ticket.age} days`} />
             <DetailRow icon={<User className="size-4" />} label="Department" value={ticket.department} />
@@ -346,10 +422,10 @@ function TicketDetailsContent({
         </Card>
 
         <Card>
-          <CardHeader>
+          <CardHeader className="p-6">
             <CardTitle>AI Analysis</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4 text-sm">
+          <CardContent className="space-y-4 text-sm p-6 pt-0">
             <DetailRow label="Suggested Category" value={formatBackendCategory(ticket.category)} />
             <DetailRow label="Suggested Priority" value={ticket.priority ?? 'Unknown'} />
             <DetailRow label="Difficulty" value={ticket.difficulty ?? 'Unknown'} />
