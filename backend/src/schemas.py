@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
@@ -59,12 +60,20 @@ class TicketCreate(BaseModel):
 
 class TicketUpdateAdmin(BaseModel):
     """Fields an admin/engineer is allowed to change."""
-    status: str | None = None
-    severity: str | None = None
+    status: Literal["Open", "In Progress", "Pending User", "Resolved", "Closed"] | None = None
+    severity: Literal["Low", "Medium", "High", "Urgent"] | None = None
     assigned_engineer: str | None = None
-    category: str | None = None
-    priority: str | None = None
-    difficulty: str | None = None
+    category: Literal[
+        "Network",
+        "Hardware",
+        "Software",
+        "Access/Account",
+        "Email",
+        "Security",
+        "Other",
+    ] | None = None
+    priority: Literal["P1", "P2", "P3", "P4"] | None = None
+    difficulty: Literal["Easy", "Medium", "Hard"] | None = None
     assigned_team: str | None = None
 
 
