@@ -100,7 +100,7 @@ def list_tickets(
     search: str | None = Query(None, description="Search by title or ticket no."),
     page: int = Query(1, ge=1, description="Page number, starts at 1"),
     limit: int = Query(20, ge=1, le=100, description="Tickets per page, max 100"),
-    current_admin: User = Depends(get_current_admin),
+    # current_admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
     q = db.query(Ticket)
