@@ -448,10 +448,10 @@ function TicketCreatedResult({
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm p-6 pt-0">
-            <ResultItem label="Requester" value={ticket.author} />
+            <ResultItem label="Requester" value={ticket.author} icon={<User className="size-4" />} />
             <ResultItem label="Email" value={ticket.author_email} icon={<Mail className="size-4" />} />
-            <ResultItem label="Department" value={ticket.department} />
-            <ResultItem label="Technology" value={ticket.technology_app_item} />
+            <ResultItem label="Department" value={ticket.department} icon={<House className="size-4" />} />
+            <ResultItem label="Technology" value={ticket.technology_app_item} icon={<AppWindow className="size-4" />} />
           </CardContent>
         </Card>
       </aside>
