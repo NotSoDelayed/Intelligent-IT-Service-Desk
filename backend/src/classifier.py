@@ -14,8 +14,13 @@ TEAMS = {
     "Security": "Security Operations (SOC)",
     "Other": "Service Desk Tier 1",
 }
-PRIORITIES = ["P1", "P2", "P3", "P4"]  # P1 = critical/urgent, P4 = low
+PRIORITIES = ["P1", "P2", "P3", "P4"]
 DIFFICULTIES = ["Easy", "Medium", "Hard"]
+
+SELF_HELP_NOTE = (
+    "Your ticket has been received and an engineer will verify and close it. "
+    "In the meantime, here are a few quick steps you can try yourself to resolve it faster."
+)
 
 
 @dataclass
@@ -26,6 +31,8 @@ class ClassificationResult:
     assigned_team: str
     suggested_severity: str
     recommended_steps: list[str] = field(default_factory=list)
+    user_self_help_steps: list[str] = field(default_factory=list)
+    self_help_note: str = ""
     confidence: int = 60
     summary: str = ""
 
@@ -47,17 +54,17 @@ exact shape:
 {
   "category": one of ["Network", "Hardware", "Software", "Access/Account", "Email", "Security", "Other"],
   "priority": one of ["P1", "P2", "P3", "P4"]  (P1 = critical/business-stopping, P4 = low/cosmetic),
-  "difficulty": one of ["Easy", "Medium", "Hard"] -- how much hands-on engineer effort/time this realistically \
-takes to resolve. Easy = single quick action (reset, restart, simple config change, ~minutes). \
-Medium = needs investigation/multiple steps but is routine (~an hour or so). \
-Hard = needs deep troubleshooting, multiple teams, vendor escalation, or hardware replacement \
-(~half a day or more).,
+  "difficulty": one of ["Easy", "Medium", "Hard"] -- how much hands-on engineer effort this takes. \
+Easy = single quick action (~minutes). Medium = routine investigation (~1 hour). \
+Hard = deep troubleshooting, vendor escalation, or hardware replacement (~half a day or more).,
   "suggested_severity": one of ["Low", "Medium", "High", "Urgent"],
   "assigned_team": short team name responsible for resolving it,
-  "recommended_steps": array of 3-5 short, concrete troubleshooting steps for the assigned engineer, \
-ordered so the fastest, highest-likelihood fix is tried first -- the goal is to resolve easy tickets \
-in the first one or two steps so the queue keeps moving,
-  "confidence": integer 0-100 reflecting how confident you are in this classification,
+  "recommended_steps": array of 3-5 concrete troubleshooting steps for the ENGINEER, fastest fix first,
+  "user_self_help_steps": array of 2-4 simple steps the USER can try themselves while waiting \
+(populate this whenever difficulty is Easy, regardless of priority -- even urgent Easy tickets \
+benefit from a quick self-service first step. Return empty array [] only if difficulty is \
+Medium or Hard),
+  "confidence": integer 0-100,
   "summary": one or two sentence neutral summary of the actual problem
 }
 """
@@ -98,8 +105,42 @@ def _call_gemini(title: str, content: str, tech_item: str, user_priority: int = 
         )
         return json.loads(response.text)
     except Exception:
-        # Any failure (no network, bad key, malformed JSON, etc.) -> fall back gracefully
         return None
+
+
+# Self-help steps for the rule-based fallback, keyed by category.
+# Used whenever difficulty is Easy, regardless of priority.
+SELF_HELP_MAP = {
+    "Network": [
+        "Restart your router or modem and wait 60 seconds before reconnecting",
+        "Try connecting to a different WiFi network or use mobile data to confirm the issue",
+        "Restart your device and try again",
+    ],
+    "Hardware": [
+        "Power off your device completely, wait 30 seconds, then turn it back on",
+        "Check all cable connections are firmly plugged in",
+        "Try a different power outlet or USB port if applicable",
+    ],
+    "Software": [
+        "Close the application completely and reopen it",
+        "Check for any pending software updates and install them",
+        "Try clearing the application cache or restarting your browser",
+    ],
+    "Access/Account": [
+        "Try resetting your password using the Forgot Password link",
+        "Clear your browser cookies and cache then try logging in again",
+        "Check if Caps Lock is on when entering your password",
+    ],
+    "Email": [
+        "Try accessing your email via the web browser instead of the desktop app",
+        "Check your internet connection and try again",
+        "Check your spam/junk folder if you are missing emails",
+    ],
+    "Other": [
+        "Try restarting the affected application or device",
+        "Check if other users in your team are experiencing the same issue",
+    ],
+}
 
 
 def _rule_based_classify(title: str, content: str, tech_item: str, user_priority: int = 3) -> dict:
@@ -155,6 +196,13 @@ def _rule_based_classify(title: str, content: str, tech_item: str, user_priority
     else:
         difficulty = "Medium"
 
+    # Option A: self-help for any Easy ticket regardless of priority
+    user_self_help_steps = (
+        SELF_HELP_MAP.get(category, SELF_HELP_MAP["Other"])
+        if difficulty == "Easy"
+        else []
+    )
+
     steps_map = {
         "Network": [
             "Confirm scope: single user or multiple users affected",
@@ -206,6 +254,7 @@ def _rule_based_classify(title: str, content: str, tech_item: str, user_priority
         "suggested_severity": severity,
         "assigned_team": TEAMS.get(category, "Service Desk Tier 1"),
         "recommended_steps": steps_map.get(category, steps_map["Other"]),
+        "user_self_help_steps": user_self_help_steps,
         "confidence": 55,
         "summary": (title.strip() or content.strip())[:200],
     }
@@ -220,6 +269,11 @@ def classify_ticket(
     """
     Main entry point. Tries Gemini first, falls back to rule-based.
     user_priority (1-5) is passed to both paths as a classification hint.
+
+    Option A: user_self_help_steps is populated whenever difficulty is Easy,
+    regardless of priority. Even a P1 Easy ticket benefits from a quick
+    self-service step while the engineer is being paged. Medium and Hard
+    tickets never get self-help -- too complex for the user to attempt.
     """
     ai_result = _call_gemini(title, content, tech_item, user_priority)
     data = ai_result if ai_result else _rule_based_classify(
@@ -230,6 +284,12 @@ def classify_ticket(
     priority = data.get("priority") if data.get("priority") in PRIORITIES else "P3"
     difficulty = data.get("difficulty") if data.get("difficulty") in DIFFICULTIES else "Medium"
 
+    # Option A: self-help for any Easy ticket, regardless of priority
+    raw_self_help = data.get("user_self_help_steps", [])
+    is_self_help_eligible = difficulty == "Easy"
+    user_self_help_steps = raw_self_help[:4] if is_self_help_eligible and raw_self_help else []
+    self_help_note = SELF_HELP_NOTE if user_self_help_steps else ""
+
     return ClassificationResult(
         category=category,
         priority=priority,
@@ -237,6 +297,8 @@ def classify_ticket(
         assigned_team=data.get("assigned_team") or TEAMS.get(category, "Service Desk Tier 1"),
         suggested_severity=data.get("suggested_severity", "Medium"),
         recommended_steps=data.get("recommended_steps", [])[:6],
+        user_self_help_steps=user_self_help_steps,
+        self_help_note=self_help_note,
         confidence=int(data.get("confidence", 60)),
         summary=data.get("summary", "")[:500],
     )
@@ -244,26 +306,21 @@ def classify_ticket(
 
 # ============================================================
 # SLA / time-budget engine
-#
-# Goal: clear easy tickets fast so they don't clog the queue, give medium
-# tickets a fair working window, and give hard tickets the time they
-# genuinely need -- while urgent priority always compresses the deadline
-# regardless of difficulty.
 # ============================================================
 DIFFICULTY_BASE_MINUTES = {
-    "Easy": 60,      # ~1 hour ceiling for a quick, single-step fix
-    "Medium": 240,   # ~4 hours for routine multi-step investigation
-    "Hard": 1440,    # ~24 hours for deep troubleshooting / escalation
+    "Easy": 60,
+    "Medium": 240,
+    "Hard": 1440,
 }
 
 PRIORITY_MULTIPLIER = {
-    "P1": 0.4,   # urgent: compress the window hard
+    "P1": 0.4,
     "P2": 0.7,
     "P3": 1.0,
-    "P4": 1.5,   # low priority: more slack is fine
+    "P4": 1.5,
 }
 
-MIN_SLA_MINUTES = 15  # never promise a sub-15-minute SLA
+MIN_SLA_MINUTES = 15
 
 
 def compute_sla(priority: str, difficulty: str, created_on: datetime) -> dict:

@@ -59,9 +59,9 @@ class Ticket(Base):
     title = Column(String(255), nullable=False)
     content = Column(Text, nullable=False)
     status = Column(Enum(TicketStatus), default=TicketStatus.open, nullable=False)
-    author = Column(String(150), nullable=False)        # submitter name
-    author_email = Column(String(150), nullable=False)  # submitter email
-    department = Column(String(150), nullable=False)    # maps to dataset "Customer" column
+    author = Column(String(150), nullable=False)
+    author_email = Column(String(150), nullable=False)
+    department = Column(String(150), nullable=False)
     created_on = Column(DateTime, default=datetime.utcnow, nullable=False)
     ticket_start_date = Column(DateTime, nullable=True)
     ticket_closed_date = Column(DateTime, nullable=True)
@@ -74,7 +74,6 @@ class Ticket(Base):
     user_priority = Column(Integer, nullable=True)
 
     # --- system / relational fields ---
-    # nullable because tickets are submitted without a user account
     author_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
     # --- AI-generated fields ---
@@ -85,6 +84,10 @@ class Ticket(Base):
     ai_recommended_steps = Column(JSON, nullable=True)
     ai_confidence = Column(Integer, nullable=True)
     ai_summary = Column(Text, nullable=True)
+
+    # --- AI self-help (populated only when P4 + Easy) ---
+    user_self_help_steps = Column(JSON, nullable=True)   # steps the user can try themselves
+    self_help_note = Column(Text, nullable=True)          # explanatory message shown to user
 
     # --- SLA time budget ---
     sla_minutes = Column(Integer, nullable=True)

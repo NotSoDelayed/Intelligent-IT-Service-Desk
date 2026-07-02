@@ -3,7 +3,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
-# ---------- Auth / Users (admin accounts only) ----------
+# ---------- Auth / Users ----------
 
 class UserRegister(BaseModel):
     full_name: str = Field(..., min_length=2, max_length=150)
@@ -42,12 +42,10 @@ class TicketCreate(BaseModel):
     Submitter info (name, email, department) is collected directly on
     the form since users do not have login accounts.
     """
-    # submitter info -- collected on the form, no account needed
     name: str = Field(..., min_length=2, max_length=150, description="Your full name")
     email: EmailStr = Field(..., description="Your email address")
     department: str = Field(..., description="Your department e.g. Finance Dept")
 
-    # ticket info
     title: str = Field(..., min_length=4, max_length=255)
     content: str = Field(..., min_length=10, description="Detailed description of the issue")
     technology_app_item: str = Field(..., description="e.g. VPN, Outlook, Laptop, ERP System")
@@ -116,6 +114,10 @@ class TicketOut(BaseModel):
     ai_confidence: int | None = None
     ai_summary: str | None = None
 
+    # AI self-help (only populated when P4 + Easy)
+    user_self_help_steps: list[str] | None = None
+    self_help_note: str | None = None
+
     # SLA
     sla_minutes: int | None = None
     due_by: datetime | None = None
@@ -161,6 +163,10 @@ class TicketTrackOut(BaseModel):
     sla_status: str | None = None
     age: int
     user_priority: int | None = None
+
+    # self-help shown on the tracking page too
+    user_self_help_steps: list[str] | None = None
+    self_help_note: str | None = None
 
 
 # ---------- Dashboard ----------
