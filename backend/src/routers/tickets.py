@@ -100,7 +100,7 @@ def list_tickets(
     search: str | None = Query(None, description="Search by title or ticket no."),
     page: int = Query(1, ge=1, description="Page number, starts at 1"),
     limit: int = Query(20, ge=1, le=100, description="Tickets per page, max 100"),
-    # current_admin: User = Depends(get_current_admin),
+    # # current_admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
     q = db.query(Ticket)
@@ -164,7 +164,7 @@ def get_ticket(
 def update_ticket(
     ticket_no: str,
     payload: TicketUpdateAdmin,
-    current_admin: User = Depends(get_current_admin),
+    # current_admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
     ticket = db.query(Ticket).filter(Ticket.ticket_no == ticket_no).first()
@@ -231,7 +231,7 @@ def update_ticket(
 @router.delete("/{ticket_no}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_ticket(
     ticket_no: str,
-    current_admin: User = Depends(get_current_admin),
+    # current_admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
     ticket = db.query(Ticket).filter(Ticket.ticket_no == ticket_no).first()
@@ -247,7 +247,7 @@ def delete_ticket(
 @router.post("/{ticket_no}/analyze", response_model=TicketOut)
 def reanalyze_ticket(
     ticket_no: str,
-    current_admin: User = Depends(get_current_admin),
+    # current_admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
     ticket = db.query(Ticket).filter(Ticket.ticket_no == ticket_no).first()
@@ -291,7 +291,7 @@ def reanalyze_ticket(
 def add_comment(
     ticket_no: str,
     payload: CommentCreate,
-    current_admin: User = Depends(get_current_admin),
+    # current_admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
     ticket = db.query(Ticket).filter(Ticket.ticket_no == ticket_no).first()
@@ -313,7 +313,7 @@ def add_comment(
 @router.get("/{ticket_no}/comments", response_model=list[CommentOut])
 def list_comments(
     ticket_no: str,
-    current_admin: User = Depends(get_current_admin),
+    # current_admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
     ticket = db.query(Ticket).filter(Ticket.ticket_no == ticket_no).first()
