@@ -180,7 +180,7 @@ def update_ticket(
             ticket.ticket_start_date = datetime.utcnow()
         if ticket.status == TicketStatus.closed:
             ticket.ticket_closed_date = datetime.utcnow()
-            ticket.closed_ticket = current_admin.full_name
+            ticket.closed_ticket = "Admin"
         changes.append(f"status: {old} -> {ticket.status.value}")
 
     if payload.severity and payload.severity != ticket.severity.value:
@@ -218,7 +218,7 @@ def update_ticket(
         changes.append(f"team: {ticket.assigned_team}")
 
     if changes:
-        log_activity(db, ticket, current_admin.full_name, "Updated " + "; ".join(changes))
+        log_activity(db, ticket, "Admin", "Updated " + "; ".join(changes))
 
     db.commit()
     db.refresh(ticket)
@@ -300,7 +300,7 @@ def add_comment(
 
     comment = TicketComment(
         ticket_id=ticket.id,
-        author_name=current_admin.full_name,
+        author_name="Admin",
         message=payload.message,
         is_system=0,
     )

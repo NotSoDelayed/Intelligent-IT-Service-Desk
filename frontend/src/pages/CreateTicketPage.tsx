@@ -64,9 +64,22 @@ const urgencyOptions = [
   { value: '5', label: '5 - Critical', description: 'Cannot work or service outage' },
 ];
 
+const departmentOptions = [
+  'IT Support Team',
+  'Software/Application Team',
+  'Network Team',
+  'Data Team',
+  'Infrastructure Team',
+  'Security Team',
+  'Helpdesk / Service Desk',
+  'Hardware Team',
+  'Other',
+];
+
 export default function CreateTicketPage() {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<FormState>(initialForm);
+  const [departmentType, setDepartmentType] = useState<string>('');
   const [errors, setErrors] = useState<FormErrors>({});
   const [createdTicket, setCreatedTicket] = useState<TicketDetailDto | null>(null);
 
@@ -114,6 +127,7 @@ export default function CreateTicketPage() {
 
   const resetForm = () => {
     setForm(initialForm);
+    setDepartmentType('');
     setErrors({});
     setCreatedTicket(null);
     createMutation.reset();
@@ -171,14 +185,41 @@ export default function CreateTicketPage() {
                   />
                 </FormField>
                 <FormField label="Department" error={errors.department}>
-                  <Input
-                    value={form.department}
-                    onChange={handleChange('department')}
-                    placeholder="Finance Dept, Sales Dept, etc..."
-                    autoComplete="organization"
-                    aria-invalid={Boolean(errors.department)}
+                  <Select
+                    value={departmentType}
+                    onValueChange={(value) => {
+                      setDepartmentType(value);
+                      if (value !== 'Other') {
+                        setForm((current) => ({ ...current, department: value }));
+                      } else {
+                        setForm((current) => ({ ...current, department: '' }));
+                      }
+                      setErrors((current) => ({ ...current, department: undefined }));
+                    }}
                     disabled={createMutation.isPending}
-                  />
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select department" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {departmentOptions.map((option) => (
+                        <SelectItem key={option} value={option}>
+                          {option}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {departmentType === 'Other' && (
+                    <Input
+                      value={form.department}
+                      onChange={handleChange('department')}
+                      placeholder="Enter custom department..."
+                      autoComplete="organization"
+                      aria-invalid={Boolean(errors.department)}
+                      disabled={createMutation.isPending}
+                      className="mt-2"
+                    />
+                  )}
                 </FormField>
               </CardContent>
             </Card>
