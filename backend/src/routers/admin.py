@@ -1,6 +1,9 @@
+import csv
+import io
 from datetime import datetime
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from auth import get_current_admin
@@ -84,4 +87,88 @@ def dashboard_stats(
         sla_met=sla_met,
         sla_breached=sla_breached,
         sla_compliance_rate=sla_compliance_rate,
+    )
+
+
+@router.get("/tickets/export")
+def export_tickets_csv(
+    current_admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """
+    Export all tickets as a downloadable CSV file.
+    Columns match the required dataset schema exactly:
+    Ticket No., Title, Content, Status, Author, Age, Department,
+    Created On, Ticket Start Date, Ticket Closed Date,
+    Technology/App/Item, Severity, Assigned Engineer, Closed Ticket,
+    plus AI-generated fields (Category, Priority, Difficulty, Assigned Team).
+    """
+    tickets = db.query(Ticket).order_by(Ticket.created_on.desc()).all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # header row -- matches your dataset column schema
+    writer.writerow([
+        "Ticket No.",
+        "Title",
+        "Content",
+        "Status",
+        "Author",
+        "Author Email",
+        "Age",
+        "Department",
+        "Created On",
+        "Ticket Start Date",
+        "Ticket Closed Date",
+        "Technology/App/Item",
+        "Severity",
+        "Assigned Engineer",
+        "Closed Ticket",
+        "Category",
+        "Priority",
+        "Difficulty",
+        "Assigned Team",
+        "SLA Minutes",
+        "Due By",
+        "SLA Status",
+    ])
+
+    def fmt(dt) -> str:
+        """Format datetime to readable string, empty string if None."""
+        return dt.strftime("%Y-%m-%d %H:%M:%S") if dt else ""
+
+    for t in tickets:
+        writer.writerow([
+            t.ticket_no,
+            t.title,
+            t.content,
+            t.status.value,
+            t.author,
+            t.author_email,
+            t.age,
+            t.department,
+            fmt(t.created_on),
+            fmt(t.ticket_start_date),
+            fmt(t.ticket_closed_date),
+            t.technology_app_item,
+            t.severity.value,
+            t.assigned_engineer or "",
+            t.closed_ticket or "",
+            t.category or "",
+            t.priority or "",
+            t.difficulty or "",
+            t.assigned_team or "",
+            t.sla_minutes or "",
+            fmt(t.due_by),
+            t.sla_status,
+        ])
+
+    output.seek(0)
+    filename = f"tickets_export_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv"
+
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )

@@ -14,12 +14,16 @@ from schemas import (
     TicketCreate,
     TicketListOut,
     TicketOut,
+    TicketPageOut,
     TicketUpdateAdmin,
 )
 
 router = APIRouter(prefix="/tickets", tags=["Tickets"])
 
 
+# ------------------------------------------------------------------
+# POST /tickets  -- PUBLIC, no login required
+# ------------------------------------------------------------------
 @router.post("", response_model=TicketOut, status_code=status.HTTP_201_CREATED)
 def create_ticket(
     payload: TicketCreate,
@@ -58,6 +62,8 @@ def create_ticket(
         ai_recommended_steps=result.recommended_steps,
         ai_confidence=result.confidence,
         ai_summary=result.summary,
+        user_self_help_steps=result.user_self_help_steps,
+        self_help_note=result.self_help_note,
         sla_minutes=sla["sla_minutes"],
         due_by=sla["due_by"],
     )
@@ -79,7 +85,11 @@ def create_ticket(
     return ticket
 
 
-@router.get("", response_model=list[TicketListOut])
+# ------------------------------------------------------------------
+# GET /tickets  -- ADMIN only, paginated
+# ?page=1&limit=20 (default: page 1, 20 per page)
+# ------------------------------------------------------------------
+@router.get("", response_model=TicketPageOut)
 def list_tickets(
     status_filter: str | None = Query(None, alias="status"),
     severity_filter: str | None = Query(None, alias="severity"),
@@ -87,6 +97,8 @@ def list_tickets(
     assigned_team: str | None = None,
     sort: str = Query("queue", description="'queue' (SLA deadline order) or 'newest'"),
     search: str | None = Query(None, description="Search by title or ticket no."),
+    page: int = Query(1, ge=1, description="Page number, starts at 1"),
+    limit: int = Query(20, ge=1, le=100, description="Tickets per page, max 100"),
     current_admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
@@ -111,9 +123,22 @@ def list_tickets(
     else:
         q = q.order_by(Ticket.due_by.asc().nullslast())
 
-    return q.all()
+    total = q.count()
+    tickets = q.offset((page - 1) * limit).limit(limit).all()
+    total_pages = (total + limit - 1) // limit
+
+    return TicketPageOut(
+        tickets=tickets,
+        total=total,
+        page=page,
+        limit=limit,
+        total_pages=total_pages,
+    )
 
 
+# ------------------------------------------------------------------
+# GET /tickets/{ticket_no}  -- PUBLIC, no login required
+# ------------------------------------------------------------------
 @router.get("/{ticket_no}", response_model=TicketOut)
 def get_ticket(
     ticket_no: str,
@@ -129,6 +154,9 @@ def get_ticket(
     return ticket
 
 
+# ------------------------------------------------------------------
+# PATCH /tickets/{ticket_no}  -- ADMIN only
+# ------------------------------------------------------------------
 @router.patch("/{ticket_no}", response_model=TicketOut)
 def update_ticket(
     ticket_no: str,
@@ -194,6 +222,9 @@ def update_ticket(
     return ticket
 
 
+# ------------------------------------------------------------------
+# DELETE /tickets/{ticket_no}  -- ADMIN only
+# ------------------------------------------------------------------
 @router.delete("/{ticket_no}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_ticket(
     ticket_no: str,
@@ -207,6 +238,9 @@ def delete_ticket(
     db.commit()
 
 
+# ------------------------------------------------------------------
+# POST /tickets/{ticket_no}/analyze  -- ADMIN only
+# ------------------------------------------------------------------
 @router.post("/{ticket_no}/analyze", response_model=TicketOut)
 def reanalyze_ticket(
     ticket_no: str,
@@ -247,6 +281,9 @@ def reanalyze_ticket(
     return ticket
 
 
+# ------------------------------------------------------------------
+# POST/GET /tickets/{ticket_no}/comments  -- ADMIN only
+# ------------------------------------------------------------------
 @router.post("/{ticket_no}/comments", response_model=CommentOut)
 def add_comment(
     ticket_no: str,

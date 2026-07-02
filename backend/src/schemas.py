@@ -114,7 +114,7 @@ class TicketOut(BaseModel):
     ai_confidence: int | None = None
     ai_summary: str | None = None
 
-    # AI self-help (only populated when P4 + Easy)
+    # AI self-help (only populated when difficulty is Easy)
     user_self_help_steps: list[str] | None = None
     self_help_note: str | None = None
 
@@ -147,6 +147,15 @@ class TicketListOut(BaseModel):
     user_priority: int | None = None
 
 
+class TicketPageOut(BaseModel):
+    """Paginated response for GET /tickets (admin queue)."""
+    tickets: list[TicketListOut]
+    total: int
+    page: int
+    limit: int
+    total_pages: int
+
+
 class TicketTrackOut(BaseModel):
     """Public ticket status check by ticket number."""
     ticket_no: str
@@ -164,7 +173,7 @@ class TicketTrackOut(BaseModel):
     age: int
     user_priority: int | None = None
 
-    # self-help shown on the tracking page too
+    # self-help shown on tracking page too
     user_self_help_steps: list[str] | None = None
     self_help_note: str | None = None
 
