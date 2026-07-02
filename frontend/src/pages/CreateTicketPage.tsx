@@ -2,10 +2,12 @@ import { useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
+  AppWindow,
   ArrowRight,
   Bot,
   CheckCircle2,
   ClipboardList,
+  House,
   Lightbulb,
   Mail,
   PlusCircle,
@@ -98,10 +100,10 @@ export default function CreateTicketPage() {
 
   const handleChange =
     (field: keyof FormState) =>
-    (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      setForm((current) => ({ ...current, [field]: event.target.value }));
-      setErrors((current) => ({ ...current, [field]: undefined }));
-    };
+      (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+        setForm((current) => ({ ...current, [field]: event.target.value }));
+        setErrors((current) => ({ ...current, [field]: undefined }));
+      };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -367,13 +369,13 @@ function TicketCreatedResult({
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_360px]">
       <div className="space-y-6">
         <Card>
-          <CardHeader>
+          <CardHeader className="p-6">
             <CardTitle className="flex items-center gap-2">
               <CheckCircle2 className="size-5 text-emerald-600 dark:text-emerald-400" />
               Ticket Created
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-5">
+          <CardContent className="space-y-5 p-6 pt-0">
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant="outline" className="text-sm">
                 {ticket.ticket_no}
@@ -417,13 +419,13 @@ function TicketCreatedResult({
 
         {hasSelfHelp && (
           <Card>
-            <CardHeader>
+            <CardHeader className="p-6">
               <CardTitle className="flex items-center gap-2">
                 <Lightbulb className="size-4 text-muted-foreground" />
                 Self Help
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-4 p-6 pt-0">
               {ticket.self_help_note && <p className="text-sm text-muted-foreground">{ticket.self_help_note}</p>}
               {ticket.user_self_help_steps && ticket.user_self_help_steps.length > 0 && (
                 <ol className="space-y-2 pl-5 text-sm text-foreground list-decimal">
@@ -439,13 +441,13 @@ function TicketCreatedResult({
 
       <aside className="space-y-4">
         <Card>
-          <CardHeader>
+          <CardHeader className="p-6">
             <CardTitle className="flex items-center gap-2">
               <ShieldCheck className="size-4 text-muted-foreground" />
               Routing Summary
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3 text-sm">
+          <CardContent className="space-y-3 text-sm p-6 pt-0">
             <ResultItem label="Requester" value={ticket.author} />
             <ResultItem label="Email" value={ticket.author_email} icon={<Mail className="size-4" />} />
             <ResultItem label="Department" value={ticket.department} />
