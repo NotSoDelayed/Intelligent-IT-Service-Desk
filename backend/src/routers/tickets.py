@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from activity_log import log_activity
 from auth import get_current_admin
-from classifier import classify_ticket, compute_sla
+from classifier import check_duplicate, classify_ticket, compute_sla
 from database import get_db
 from models import Severity, Ticket, TicketComment, TicketStatus, User
 from schemas import (
@@ -43,6 +43,23 @@ def create_ticket(
     created_on = datetime.utcnow()
     sla = compute_sla(result.priority, result.difficulty, created_on)
 
+    open_tickets = db.query(Ticket).filter(
+        Ticket.author_email == payload.email,
+        Ticket.status.in_(["Open", "In Progress", "Pending User"]),
+    ).all()
+
+    existing_for_check = [
+        {"ticket_no": t.ticket_no, "title": t.title, "content": t.content}
+        for t in open_tickets
+    ]
+
+    duplicate_match = check_duplicate(payload.title, payload.content, existing_for_check)
+    duplicate_warning = (
+        f"You may already have a similar open ticket: {duplicate_match['ticket_no']}. "
+        f"Please check before proceeding."
+        if duplicate_match else None
+    )
+
     ticket = Ticket(
         title=payload.title,
         content=payload.content,
@@ -66,6 +83,7 @@ def create_ticket(
         self_help_note=result.self_help_note,
         sla_minutes=sla["sla_minutes"],
         due_by=sla["due_by"],
+        duplicate_warning=duplicate_warning,
     )
     db.add(ticket)
     db.commit()
@@ -80,6 +98,14 @@ def create_ticket(
         f"Target resolution: {hours}h by {sla['due_by'].strftime('%b %d, %H:%M UTC')} "
         f"(confidence {result.confidence}%).",
     )
+
+    if duplicate_warning:
+        log_activity(
+            db, ticket, "AI System",
+            f"Possible duplicate detected: {duplicate_match['ticket_no']} -- "
+            f"admin should review and merge if needed.",
+        )
+
     db.commit()
 
     return ticket

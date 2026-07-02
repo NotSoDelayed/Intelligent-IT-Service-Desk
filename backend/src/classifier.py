@@ -305,6 +305,96 @@ def classify_ticket(
 
 
 # ============================================================
+# Duplicate ticket detection
+# ============================================================
+def check_duplicate(
+    new_title: str,
+    new_content: str,
+    existing_tickets: list[dict],
+) -> dict | None:
+    """
+    Checks if a new ticket matches any existing open ticket from the same
+    user. Tries Gemini for semantic comparison first (catches things like
+    "VPN not working" vs "VPN keeps dropping"), falls back to keyword
+    overlap if no API key is configured.
+
+    existing_tickets: list of dicts with keys ticket_no, title, content
+    Returns the matching ticket dict, or None if no duplicate found.
+    """
+    if not existing_tickets:
+        return None
+
+    if settings.GEMINI_API_KEY:
+        result = _check_duplicate_gemini(new_title, new_content, existing_tickets)
+        if result is not None:
+            return result
+
+    return _check_duplicate_keywords(new_title, new_content, existing_tickets)
+
+
+def _check_duplicate_gemini(new_title: str, new_content: str, existing_tickets: list[dict]) -> dict | None:
+    try:
+        from google import genai
+        from google.genai import types
+
+        client = genai.Client(api_key=settings.GEMINI_API_KEY)
+
+        candidates_text = "\n".join(
+            f"{i + 1}. [{t['ticket_no']}] {t['title']} -- {t['content'][:200]}"
+            for i, t in enumerate(existing_tickets)
+        )
+        prompt = (
+            f"New ticket:\nTitle: {new_title}\nDescription: {new_content}\n\n"
+            f"Existing open tickets from the same user:\n{candidates_text}\n\n"
+            "Does the new ticket describe the SAME underlying problem as any "
+            "existing ticket, even if worded differently? Respond with ONLY "
+            "raw JSON, no markdown fences: "
+            '{"is_duplicate": true or false, "matching_ticket_no": "<ticket_no or null>"}'
+        )
+        response = client.models.generate_content(
+            model=settings.GEMINI_MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                temperature=0.1,
+            ),
+        )
+        data = json.loads(response.text)
+        if data.get("is_duplicate") and data.get("matching_ticket_no"):
+            for t in existing_tickets:
+                if t["ticket_no"] == data["matching_ticket_no"]:
+                    return t
+        return None
+    except Exception:
+        return None
+
+
+def _check_duplicate_keywords(
+    new_title: str, new_content: str, existing_tickets: list[dict], threshold: float = 0.4
+) -> dict | None:
+    """Deterministic fallback: 40%+ keyword overlap = likely duplicate."""
+    stop = {"the", "a", "an", "is", "are", "to", "of", "and", "or", "my",
+            "in", "on", "for", "with", "i", "it", "this", "that", "not"}
+
+    def keywords(text: str) -> set[str]:
+        return {w for w in text.lower().split() if w not in stop and len(w) > 2}
+
+    new_words = keywords(f"{new_title} {new_content}")
+    if not new_words:
+        return None
+
+    for t in existing_tickets:
+        existing_words = keywords(f"{t['title']} {t['content']}")
+        if not existing_words:
+            continue
+        overlap = len(new_words & existing_words) / max(len(new_words), len(existing_words))
+        if overlap >= threshold:
+            return t
+
+    return None
+
+
+# ============================================================
 # SLA / time-budget engine
 # ============================================================
 DIFFICULTY_BASE_MINUTES = {

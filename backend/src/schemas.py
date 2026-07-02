@@ -132,6 +132,9 @@ class TicketOut(BaseModel):
     due_by: datetime | None = None
     sla_status: str | None = None
 
+    # Duplicate detection (populated if a similar open ticket already exists)
+    duplicate_warning: str | None = None
+
 
 class TicketListOut(BaseModel):
     """Lighter payload for table/list views."""

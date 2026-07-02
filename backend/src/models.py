@@ -93,6 +93,9 @@ class Ticket(Base):
     sla_minutes = Column(Integer, nullable=True)
     due_by = Column(DateTime, nullable=True)
 
+    # --- Duplicate detection result ---
+    duplicate_warning = Column(Text, nullable=True)  # set if a similar open ticket was found
+
     owner = relationship("User", back_populates="tickets", foreign_keys=[author_id])
     comments = relationship("TicketComment", back_populates="ticket", cascade="all, delete-orphan")
 
