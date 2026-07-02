@@ -75,6 +75,8 @@ export default function TicketListPage() {
   const [sort, setSort] = useState<SortKey>('newest');
   const [page, setPage] = useState(1);
 
+  const hasFilters = search.trim() !== '' || status !== 'all' || priority !== 'all' || category !== 'all';
+
   const { data, isLoading } = useQuery({
     queryKey: ['ticket-list', { search, status, priority, category, sort, page }],
     queryFn: () => listTickets({
@@ -245,12 +247,18 @@ export default function TicketListPage() {
 
       {filteredTickets.length === 0 ? (
         <EmptyState
-          title="No tickets found"
-          description="Try changing your filters or search terms to see more results."
+          title={hasFilters ? "No tickets found" : "No tickets available"}
+          description={
+            hasFilters
+              ? "Try changing your filters or search terms to see more results."
+              : "Your queue is currently empty. New tickets will appear here."
+          }
           action={
-            <Button variant="outline" onClick={handleFilterReset}>
-              Clear filters
-            </Button>
+            hasFilters ? (
+              <Button variant="outline" onClick={handleFilterReset}>
+                Clear filters
+              </Button>
+            ) : undefined
           }
         />
       ) : (
