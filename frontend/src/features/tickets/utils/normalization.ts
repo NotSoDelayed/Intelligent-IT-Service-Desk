@@ -78,3 +78,37 @@ export function toUiCategory(
 export function formatBackendCategory(category: string | null | undefined) {
   return category ?? 'Unknown';
 }
+
+export function toBackendPriority(priority: TicketPriority): TicketBackendPriority {
+  switch (priority) {
+    case 'critical':
+      return 'P1';
+    case 'high':
+      return 'P2';
+    case 'low':
+      return 'P4';
+    case 'medium':
+    default:
+      return 'P3';
+  }
+}
+
+export function toBackendCategory(category: TicketCategory): TicketBackendCategory {
+  switch (category) {
+    case 'hardware':
+      return 'Hardware';
+    case 'software':
+      return 'Software';
+    case 'network':
+      return 'Network';
+    case 'security':
+      return 'Security';
+    case 'access':
+      return 'Access/Account';
+    case 'email':
+      return 'Email';
+    case 'other':
+    default:
+      return 'Other';
+  }
+}

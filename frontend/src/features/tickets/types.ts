@@ -37,6 +37,7 @@ export interface TicketListParams {
   status?: TicketBackendStatus;
   severity?: TicketBackendSeverity;
   category?: TicketBackendCategory;
+  priority?: TicketBackendPriority;
   assigned_team?: string;
   sort?: TicketSort;
   search?: string;

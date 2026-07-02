@@ -23,11 +23,22 @@ import { CategoryBadge } from '@/components/shared/CategoryBadge';
 import { PriorityBadge } from '@/components/shared/PriorityBadge';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { cn } from '@/lib/utils';
-import type { Ticket, TicketCategory, TicketPriority, TicketStatus } from '@/types/ticket';
+import { useQuery } from '@tanstack/react-query';
+import { listTickets } from '@/features/tickets/api/tickets';
+import {
+  toBackendStatus,
+  toBackendPriority,
+  toBackendCategory,
+  toUiCategory,
+  toUiPriority,
+  toUiStatus,
+} from '@/features/tickets/utils/normalization';
+import type { TicketCategory, TicketPriority, TicketStatus } from '@/types/ticket';
+import type { TicketSort } from '@/features/tickets/types';
 
-type SortKey = 'updatedAt' | 'createdAt' | 'priority' | 'status';
+type SortKey = TicketSort;
 
-const tickets: Ticket[] = [];
+
 
 const pageSize = 10;
 
@@ -61,42 +72,35 @@ export default function TicketListPage() {
   const [status, setStatus] = useState<TicketStatus | 'all'>('all');
   const [priority, setPriority] = useState<TicketPriority | 'all'>('all');
   const [category, setCategory] = useState<TicketCategory | 'all'>('all');
-  const [sort, setSort] = useState<SortKey>('updatedAt');
+  const [sort, setSort] = useState<SortKey>('newest');
   const [page, setPage] = useState(1);
 
-  const filteredTickets = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    return tickets
-      .filter((ticket) => {
-        const matchesSearch =
-          !query ||
-          ticket.id.toLowerCase().includes(query) ||
-          ticket.subject.toLowerCase().includes(query) ||
-          ticket.description.toLowerCase().includes(query);
+  const { data, isLoading } = useQuery({
+    queryKey: ['ticket-list', { search, status, priority, category, sort, page }],
+    queryFn: () => listTickets({
+      search: search.trim() || undefined,
+      status: status === 'all' ? undefined : toBackendStatus(status),
+      priority: priority === 'all' ? undefined : toBackendPriority(priority),
+      category: category === 'all' ? undefined : toBackendCategory(category),
+      sort,
+      page,
+      limit: pageSize,
+    }),
+  });
 
-        return (
-          matchesSearch &&
-          (status === 'all' || ticket.status === status) &&
-          (priority === 'all' || ticket.priority === priority) &&
-          (category === 'all' || ticket.category === category)
-        );
-      })
-      .sort((a, b) => sortTickets(a, b, sort));
-  }, [search, status, priority, category, sort]);
-
-  const totalPages = Math.max(1, Math.ceil(filteredTickets.length / pageSize));
-  const currentPage = Math.min(page, totalPages);
-  const paginatedTickets = filteredTickets.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const filteredTickets = data?.tickets ?? [];
+  const totalItems = data?.total ?? 0;
+  const totalPages = data?.total_pages ?? 1;
+  const currentPage = data?.page ?? 1;
 
   const metrics = useMemo(() => {
-    const total = tickets.length;
-    const open = tickets.filter((ticket) => ticket.status === 'open').length;
-    const closed = tickets.filter((ticket) => ticket.status === 'closed').length;
-    const highPriority = tickets.filter(
-      (ticket) => ticket.priority === 'high' || ticket.priority === 'critical'
+    const total = totalItems;
+    const open = filteredTickets.filter((ticket) => toUiStatus(ticket.status) === 'open').length;
+    const closed = filteredTickets.filter((ticket) => toUiStatus(ticket.status) === 'closed').length;
+    const highPriority = filteredTickets.filter(
+      (ticket) => toUiPriority(ticket.priority) === 'high' || toUiPriority(ticket.priority) === 'critical'
     ).length;
-    const avgConfidence =
-      tickets.reduce((sum, ticket) => sum + (ticket.aiConfidence ?? 0), 0) / tickets.length;
+    const avgConfidence = 0;
 
     return {
       total,
@@ -105,14 +109,14 @@ export default function TicketListPage() {
       highPriority,
       avgConfidence,
     };
-  }, []);
+  }, [filteredTickets, totalItems]);
 
   const handleFilterReset = () => {
     setSearch('');
     setStatus('all');
     setPriority('all');
     setCategory('all');
-    setSort('updatedAt');
+    setSort('newest');
     setPage(1);
   };
 
@@ -177,7 +181,7 @@ export default function TicketListPage() {
             />
             <div className="flex items-center gap-2 text-sm text-muted-foreground lg:ml-auto">
               <Users className="size-4" />
-              <span>{filteredTickets.length} matching tickets</span>
+              <span>{totalItems} matching tickets</span>
             </div>
           </div>
 
@@ -229,10 +233,8 @@ export default function TicketListPage() {
                     value={sort}
                     onValueChange={(value) => setSort(value as SortKey)}
                   >
-                    <DropdownMenuRadioItem value="updatedAt">Most recent</DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem value="createdAt">Oldest first</DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem value="priority">Priority</DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem value="status">Status</DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="newest">Most recent</DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem value="queue">Queue (SLA Deadline)</DropdownMenuRadioItem>
                   </DropdownMenuRadioGroup>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -259,15 +261,14 @@ export default function TicketListPage() {
                 {
                   id: 'id',
                   header: 'Ticket ID',
-                  cell: (row) => <span className="font-medium">{row.id}</span>,
+                  cell: (row) => <span className="font-medium">{row.ticket_no}</span>,
                 },
                 {
                   id: 'subject',
                   header: 'Subject',
                   cell: (row) => (
                     <div className="max-w-[320px] space-y-1">
-                      <p className="truncate font-medium text-foreground">{row.subject}</p>
-                      <p className="line-clamp-2 text-xs text-muted-foreground">{row.description}</p>
+                      <p className="truncate font-medium text-foreground">{row.title}</p>
                     </div>
                   ),
                   className: 'w-[360px]',
@@ -275,36 +276,31 @@ export default function TicketListPage() {
                 {
                   id: 'category',
                   header: 'Category',
-                  cell: (row) => <CategoryBadge category={row.category} />,
+                  cell: (row) => <CategoryBadge category={toUiCategory(row.category)} />,
                 },
                 {
                   id: 'priority',
                   header: 'Priority',
-                  cell: (row) => <PriorityBadge priority={row.priority} />,
+                  cell: (row) => <PriorityBadge priority={toUiPriority(row.priority)} />,
                 },
                 {
                   id: 'status',
                   header: 'Status',
-                  cell: (row) => <StatusBadge status={row.status} />,
+                  cell: (row) => <StatusBadge status={toUiStatus(row.status)} />,
                 },
                 {
                   id: 'createdAt',
                   header: 'Created At',
-                  cell: (row) => formatDate(row.createdAt),
-                },
-                {
-                  id: 'updatedAt',
-                  header: 'Updated At',
-                  cell: (row) => formatDate(row.updatedAt),
+                  cell: (row) => formatDate(row.created_on),
                 },
               ]}
-              data={paginatedTickets}
-              getRowKey={(row) => row.id}
-              onRowClick={(row) => navigate(`/tickets/${row.id}`)}
+              data={filteredTickets}
+              getRowKey={(row) => row.ticket_no}
+              onRowClick={(row) => navigate(`/tickets/${row.ticket_no}`)}
               pagination={{
                 page: currentPage,
                 totalPages,
-                totalItems: filteredTickets.length,
+                totalItems: totalItems,
                 pageSize,
                 onPageChange: handlePageChange,
               }}
@@ -312,10 +308,10 @@ export default function TicketListPage() {
           </div>
 
           <div className="grid gap-3 md:hidden">
-            {paginatedTickets.map((ticket) => (
+            {filteredTickets.map((ticket) => (
               <button
-                key={ticket.id}
-                onClick={() => navigate(`/tickets/${ticket.id}`)}
+                key={ticket.ticket_no}
+                onClick={() => navigate(`/tickets/${ticket.ticket_no}`)}
                 className={cn(
                   'rounded-xl border border-border bg-card p-4 text-left shadow-sm transition-colors',
                   'hover:border-primary/30 hover:bg-accent/40'
@@ -323,18 +319,17 @@ export default function TicketListPage() {
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="space-y-1">
-                    <p className="text-sm font-semibold text-foreground">{ticket.id}</p>
-                    <p className="line-clamp-2 text-sm text-muted-foreground">{ticket.subject}</p>
+                    <p className="text-sm font-semibold text-foreground">{ticket.ticket_no}</p>
+                    <p className="line-clamp-2 text-sm text-muted-foreground">{ticket.title}</p>
                   </div>
-                  <StatusBadge status={ticket.status} />
+                  <StatusBadge status={toUiStatus(ticket.status)} />
                 </div>
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <CategoryBadge category={ticket.category} />
-                  <PriorityBadge priority={ticket.priority} />
+                  <CategoryBadge category={toUiCategory(ticket.category)} />
+                  <PriorityBadge priority={toUiPriority(ticket.priority)} />
                 </div>
                 <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground">
-                  <span>{formatDate(ticket.createdAt)}</span>
-                  <span>{formatDate(ticket.updatedAt)}</span>
+                  <span>{formatDate(ticket.created_on)}</span>
                 </div>
               </button>
             ))}
@@ -358,45 +353,10 @@ export default function TicketListPage() {
   );
 }
 
-function sortTickets(a: Ticket, b: Ticket, sort: SortKey): number {
-  switch (sort) {
-    case 'createdAt':
-    case 'updatedAt':
-      return b[sort].localeCompare(a[sort]);
-    case 'priority':
-      return priorityRank(b.priority) - priorityRank(a.priority);
-    case 'status':
-      return statusRank(a.status) - statusRank(b.status);
-    default:
-      return b.updatedAt.localeCompare(a.updatedAt);
-  }
-}
-
-function priorityRank(priority: TicketPriority): number {
-  return {
-    low: 1,
-    medium: 2,
-    high: 3,
-    critical: 4,
-  }[priority];
-}
-
-function statusRank(status: TicketStatus): number {
-  return {
-    open: 1,
-    in_progress: 2,
-    pending_user: 3,
-    resolved: 4,
-    closed: 5,
-  }[status];
-}
-
 function sortLabel(sort: SortKey): string {
   return {
-    updatedAt: 'Recent',
-    createdAt: 'Oldest',
-    priority: 'Priority',
-    status: 'Status',
+    newest: 'Recent',
+    queue: 'Queue',
   }[sort];
 }
 

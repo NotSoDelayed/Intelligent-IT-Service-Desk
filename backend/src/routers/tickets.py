@@ -94,6 +94,7 @@ def list_tickets(
     status_filter: str | None = Query(None, alias="status"),
     severity_filter: str | None = Query(None, alias="severity"),
     category_filter: str | None = Query(None, alias="category"),
+    priority_filter: str | None = Query(None, alias="priority"),
     assigned_team: str | None = None,
     sort: str = Query("queue", description="'queue' (SLA deadline order) or 'newest'"),
     search: str | None = Query(None, description="Search by title or ticket no."),
@@ -110,6 +111,8 @@ def list_tickets(
         q = q.filter(Ticket.severity == severity_filter)
     if category_filter:
         q = q.filter(Ticket.category == category_filter)
+    if priority_filter:
+        q = q.filter(Ticket.priority == priority_filter)
     if assigned_team:
         q = q.filter(Ticket.assigned_team == assigned_team)
     if search:
