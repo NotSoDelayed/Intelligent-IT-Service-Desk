@@ -1,4 +1,5 @@
 import json
+import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
 
@@ -21,6 +22,12 @@ SELF_HELP_NOTE = (
     "Your ticket has been received and an engineer will verify and close it. "
     "In the meantime, here are a few quick steps you can try yourself to resolve it faster."
 )
+
+# --- Gemini call resilience ---
+# No env var changes required -- these are safe defaults. Tune if needed.
+GEMINI_TIMEOUT_SECONDS = 10
+GEMINI_MAX_RETRIES = 2          # total attempts = 1 + this
+GEMINI_RETRY_BACKOFF_SECONDS = 1
 
 
 @dataclass
@@ -70,42 +77,60 @@ Medium or Hard),
 """
 
 
+def _get_gemini_client():
+    """
+    Builds a Gemini client with a request timeout configured, so a hung
+    Gemini call can't block a request indefinitely.
+    """
+    from google import genai
+    from google.genai import types
+
+    return genai.Client(
+        api_key=settings.GEMINI_API_KEY,
+        http_options=types.HttpOptions(timeout=GEMINI_TIMEOUT_SECONDS * 1000),  # ms
+    )
+
+
 def _call_gemini(title: str, content: str, tech_item: str, user_priority: int = 3) -> dict | None:
     if not settings.GEMINI_API_KEY:
         return None
-    try:
-        from google import genai
-        from google.genai import types
 
-        client = genai.Client(api_key=settings.GEMINI_API_KEY)
+    from google.genai import types
 
-        urgency_label = {
-            1: "1/5 - not urgent at all",
-            2: "2/5 - low urgency",
-            3: "3/5 - moderate urgency",
-            4: "4/5 - high urgency",
-            5: "5/5 - critical, cannot work",
-        }.get(user_priority, "3/5 - moderate urgency")
+    urgency_label = {
+        1: "1/5 - not urgent at all",
+        2: "2/5 - low urgency",
+        3: "3/5 - moderate urgency",
+        4: "4/5 - high urgency",
+        5: "5/5 - critical, cannot work",
+    }.get(user_priority, "3/5 - moderate urgency")
 
-        user_prompt = (
-            f"Title: {title}\n"
-            f"Technology/App/Item: {tech_item}\n"
-            f"User-reported urgency: {urgency_label}\n"
-            f"Description: {content}\n\n"
-            "Classify this ticket now."
-        )
-        response = client.models.generate_content(
-            model=settings.GEMINI_MODEL,
-            contents=user_prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=SYSTEM_PROMPT,
-                response_mime_type="application/json",
-                temperature=0.2,
-            ),
-        )
-        return json.loads(response.text)
-    except Exception:
-        return None
+    user_prompt = (
+        f"Title: {title}\n"
+        f"Technology/App/Item: {tech_item}\n"
+        f"User-reported urgency: {urgency_label}\n"
+        f"Description: {content}\n\n"
+        "Classify this ticket now."
+    )
+
+    for attempt in range(GEMINI_MAX_RETRIES + 1):
+        try:
+            client = _get_gemini_client()
+            response = client.models.generate_content(
+                model=settings.GEMINI_MODEL,
+                contents=user_prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=SYSTEM_PROMPT,
+                    response_mime_type="application/json",
+                    temperature=0.2,
+                ),
+            )
+            return json.loads(response.text)
+        except Exception:
+            if attempt < GEMINI_MAX_RETRIES:
+                time.sleep(GEMINI_RETRY_BACKOFF_SECONDS * (attempt + 1))
+                continue
+            return None  # exhausted retries -- caller falls back to rule-based
 
 
 # Self-help steps for the rule-based fallback, keyed by category.
@@ -267,8 +292,9 @@ def classify_ticket(
     user_priority: int = 3,
 ) -> ClassificationResult:
     """
-    Main entry point. Tries Gemini first, falls back to rule-based.
-    user_priority (1-5) is passed to both paths as a classification hint.
+    Main entry point. Tries Gemini first (with timeout + retries), falls
+    back to rule-based. user_priority (1-5) is passed to both paths as a
+    classification hint.
 
     Option A: user_self_help_steps is populated whenever difficulty is Easy,
     regardless of priority. Even a P1 Easy ticket benefits from a quick
@@ -307,6 +333,15 @@ def classify_ticket(
 # ============================================================
 # Duplicate ticket detection
 # ============================================================
+# Tier 1: Gemini (semantic, best quality, needs API key + network)
+# Tier 2: local sentence-embeddings (semantic, offline, no API key)
+# Tier 3: keyword overlap (crude, last resort, always available)
+EMBEDDING_MODEL_NAME = "all-MiniLM-L6-v2"
+EMBEDDING_SIMILARITY_THRESHOLD = 0.72
+
+_embedding_model = None  # lazy-loaded singleton, only loaded if actually needed
+
+
 def check_duplicate(
     new_title: str,
     new_content: str,
@@ -315,8 +350,10 @@ def check_duplicate(
     """
     Checks if a new ticket matches any existing open ticket from the same
     user. Tries Gemini for semantic comparison first (catches things like
-    "VPN not working" vs "VPN keeps dropping"), falls back to keyword
-    overlap if no API key is configured.
+    "VPN not working" vs "VPN keeps dropping"). If Gemini isn't configured
+    or the call fails/times out, falls back to a locally-run embedding
+    model for semantic matching without any API key. If that model can't
+    be loaded either, falls back to plain keyword overlap.
 
     existing_tickets: list of dicts with keys ticket_no, title, content
     Returns the matching ticket dict, or None if no duplicate found.
@@ -329,44 +366,94 @@ def check_duplicate(
         if result is not None:
             return result
 
+    result = _check_duplicate_embeddings(new_title, new_content, existing_tickets)
+    if result is not None:
+        return result
+
     return _check_duplicate_keywords(new_title, new_content, existing_tickets)
 
 
 def _check_duplicate_gemini(new_title: str, new_content: str, existing_tickets: list[dict]) -> dict | None:
+    from google.genai import types
+
+    candidates_text = "\n".join(
+        f"{i + 1}. [{t['ticket_no']}] {t['title']} -- {t['content'][:200]}"
+        for i, t in enumerate(existing_tickets)
+    )
+    prompt = (
+        f"New ticket:\nTitle: {new_title}\nDescription: {new_content}\n\n"
+        f"Existing open tickets from the same user:\n{candidates_text}\n\n"
+        "Does the new ticket describe the SAME underlying problem as any "
+        "existing ticket, even if worded differently? Respond with ONLY "
+        "raw JSON, no markdown fences: "
+        '{"is_duplicate": true or false, "matching_ticket_no": "<ticket_no or null>"}'
+    )
+
+    for attempt in range(GEMINI_MAX_RETRIES + 1):
+        try:
+            client = _get_gemini_client()
+            response = client.models.generate_content(
+                model=settings.GEMINI_MODEL,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    temperature=0.1,
+                ),
+            )
+            data = json.loads(response.text)
+            if data.get("is_duplicate") and data.get("matching_ticket_no"):
+                for t in existing_tickets:
+                    if t["ticket_no"] == data["matching_ticket_no"]:
+                        return t
+            return None
+        except Exception:
+            if attempt < GEMINI_MAX_RETRIES:
+                time.sleep(GEMINI_RETRY_BACKOFF_SECONDS * (attempt + 1))
+                continue
+            return None  # exhausted retries -- caller falls back to embeddings/keywords
+
+
+def _get_embedding_model():
+    """Lazy-loads the local sentence-embedding model on first use only."""
+    global _embedding_model
+    if _embedding_model is None:
+        from sentence_transformers import SentenceTransformer
+        _embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
+    return _embedding_model
+
+
+def _check_duplicate_embeddings(
+    new_title: str, new_content: str, existing_tickets: list[dict]
+) -> dict | None:
+    """
+    Semantic duplicate check that runs fully offline -- no API key, no
+    network call. Encodes ticket text into vectors and compares cosine
+    similarity. Returns None (falls through to keyword check) if the
+    embedding library/model isn't available for any reason.
+    """
     try:
-        from google import genai
-        from google.genai import types
+        from sentence_transformers import util
 
-        client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        model = _get_embedding_model()
 
-        candidates_text = "\n".join(
-            f"{i + 1}. [{t['ticket_no']}] {t['title']} -- {t['content'][:200]}"
-            for i, t in enumerate(existing_tickets)
-        )
-        prompt = (
-            f"New ticket:\nTitle: {new_title}\nDescription: {new_content}\n\n"
-            f"Existing open tickets from the same user:\n{candidates_text}\n\n"
-            "Does the new ticket describe the SAME underlying problem as any "
-            "existing ticket, even if worded differently? Respond with ONLY "
-            "raw JSON, no markdown fences: "
-            '{"is_duplicate": true or false, "matching_ticket_no": "<ticket_no or null>"}'
-        )
-        response = client.models.generate_content(
-            model=settings.GEMINI_MODEL,
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                temperature=0.1,
-            ),
-        )
-        data = json.loads(response.text)
-        if data.get("is_duplicate") and data.get("matching_ticket_no"):
-            for t in existing_tickets:
-                if t["ticket_no"] == data["matching_ticket_no"]:
-                    return t
+        new_text = f"{new_title} {new_content}"
+        new_embedding = model.encode(new_text, convert_to_tensor=True)
+
+        best_match = None
+        best_score = 0.0
+        for t in existing_tickets:
+            existing_text = f"{t['title']} {t['content']}"
+            existing_embedding = model.encode(existing_text, convert_to_tensor=True)
+            score = util.cos_sim(new_embedding, existing_embedding).item()
+            if score > best_score:
+                best_score = score
+                best_match = t
+
+        if best_match is not None and best_score >= EMBEDDING_SIMILARITY_THRESHOLD:
+            return best_match
         return None
     except Exception:
-        return None
+        return None  # library missing / model failed to load -- fall back to keywords
 
 
 def _check_duplicate_keywords(
