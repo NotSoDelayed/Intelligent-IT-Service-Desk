@@ -1,11 +1,11 @@
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, BackgroundTasks
 from sqlalchemy.orm import Session
 
 from activity_log import log_activity
 from classifier import check_duplicate, classify_ticket, compute_sla
-from database import get_db
+from database import get_db, SessionLocal
 from models import Severity, Ticket, TicketComment, TicketStatus
 from schemas import (
     CommentCreate,
@@ -19,12 +19,113 @@ from schemas import (
 router = APIRouter(prefix="/tickets", tags=["Tickets"])
 
 
+def background_process_ticket_creation(ticket_no: str, email: str):
+    with SessionLocal() as db:
+        ticket = db.query(Ticket).filter(Ticket.ticket_no == ticket_no).first()
+        if not ticket:
+            return
+
+        result = classify_ticket(
+            ticket.title,
+            ticket.content,
+            ticket.technology_app_item,
+            ticket.user_priority or 3,
+        )
+        sla = compute_sla(result.priority, result.difficulty, ticket.created_on)
+
+        open_tickets = db.query(Ticket).filter(
+            Ticket.author_email == email,
+            Ticket.status.in_(["Open", "In Progress", "Pending User"]),
+            Ticket.ticket_no != ticket_no
+        ).all()
+
+        existing_for_check = [
+            {"ticket_no": t.ticket_no, "title": t.title, "content": t.content}
+            for t in open_tickets
+        ]
+
+        duplicate_match = check_duplicate(ticket.title, ticket.content, existing_for_check)
+        duplicate_warning = (
+            f"You may already have a similar open ticket: {duplicate_match['ticket_no']}. "
+            f"Please check before proceeding."
+            if duplicate_match else None
+        )
+
+        ticket.severity = Severity(result.suggested_severity) if result.suggested_severity in Severity._value2member_map_ else Severity.medium
+        ticket.category = result.category
+        ticket.priority = result.priority
+        ticket.difficulty = result.difficulty
+        ticket.assigned_team = result.assigned_team
+        ticket.ai_recommended_steps = result.recommended_steps
+        ticket.ai_confidence = result.confidence
+        ticket.ai_summary = result.summary
+        ticket.user_self_help_steps = result.user_self_help_steps
+        ticket.self_help_note = result.self_help_note
+        ticket.sla_minutes = sla["sla_minutes"]
+        ticket.due_by = sla["due_by"]
+        ticket.duplicate_warning = duplicate_warning
+
+        hours = round(sla["sla_minutes"] / 60, 1)
+        log_activity(
+            db, ticket, "AI System",
+            f"Ticket auto-classified as {result.category} / {result.priority} / "
+            f"{result.difficulty} difficulty, routed to {result.assigned_team}. "
+            f"User urgency: {ticket.user_priority}/5. "
+            f"Target resolution: {hours}h by {sla['due_by'].strftime('%b %d, %H:%M UTC')} "
+            f"(confidence {result.confidence}%).",
+        )
+
+        if duplicate_warning:
+            log_activity(
+                db, ticket, "AI System",
+                f"Possible duplicate detected: {duplicate_match['ticket_no']} -- "
+                f"admin should review and merge if needed.",
+            )
+
+        db.commit()
+
+
+def background_reanalyze_ticket(ticket_no: str):
+    with SessionLocal() as db:
+        ticket = db.query(Ticket).filter(Ticket.ticket_no == ticket_no).first()
+        if not ticket:
+            return
+
+        result = classify_ticket(
+            ticket.title,
+            ticket.content,
+            ticket.technology_app_item,
+            ticket.user_priority or 3,
+        )
+        sla = compute_sla(result.priority, result.difficulty, ticket.created_on)
+
+        ticket.category = result.category
+        ticket.priority = result.priority
+        ticket.difficulty = result.difficulty
+        ticket.assigned_team = result.assigned_team
+        ticket.ai_recommended_steps = result.recommended_steps
+        ticket.ai_confidence = result.confidence
+        ticket.ai_summary = result.summary
+        ticket.sla_minutes = sla["sla_minutes"]
+        ticket.due_by = sla["due_by"]
+
+        hours = round(sla["sla_minutes"] / 60, 1)
+        log_activity(
+            db, ticket, "AI System",
+            f"Re-analyzed: {result.category} / {result.priority} / {result.difficulty} difficulty, "
+            f"routed to {result.assigned_team}. Target resolution: {hours}h "
+            f"by {sla['due_by'].strftime('%b %d, %H:%M UTC')} (confidence {result.confidence}%).",
+        )
+        db.commit()
+
+
 # ------------------------------------------------------------------
 # POST /tickets  -- PUBLIC, no login required
 # ------------------------------------------------------------------
 @router.post("", response_model=TicketOut, status_code=status.HTTP_201_CREATED)
 def create_ticket(
     payload: TicketCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
     """
@@ -32,31 +133,7 @@ def create_ticket(
     AI classification and SLA calculation run automatically.
     Returns the ticket_no so the user can track progress later.
     """
-    result = classify_ticket(
-        payload.title,
-        payload.content,
-        payload.technology_app_item,
-        payload.user_priority,
-    )
     created_on = datetime.utcnow()
-    sla = compute_sla(result.priority, result.difficulty, created_on)
-
-    open_tickets = db.query(Ticket).filter(
-        Ticket.author_email == payload.email,
-        Ticket.status.in_(["Open", "In Progress", "Pending User"]),
-    ).all()
-
-    existing_for_check = [
-        {"ticket_no": t.ticket_no, "title": t.title, "content": t.content}
-        for t in open_tickets
-    ]
-
-    duplicate_match = check_duplicate(payload.title, payload.content, existing_for_check)
-    duplicate_warning = (
-        f"You may already have a similar open ticket: {duplicate_match['ticket_no']}. "
-        f"Please check before proceeding."
-        if duplicate_match else None
-    )
 
     ticket = Ticket(
         title=payload.title,
@@ -69,42 +146,19 @@ def create_ticket(
         created_on=created_on,
         technology_app_item=payload.technology_app_item,
         user_priority=payload.user_priority,
-        severity=Severity(result.suggested_severity) if result.suggested_severity in Severity._value2member_map_ else Severity.medium,
-        category=result.category,
-        priority=result.priority,
-        difficulty=result.difficulty,
-        assigned_team=result.assigned_team,
-        ai_recommended_steps=result.recommended_steps,
-        ai_confidence=result.confidence,
-        ai_summary=result.summary,
-        user_self_help_steps=result.user_self_help_steps,
-        self_help_note=result.self_help_note,
-        sla_minutes=sla["sla_minutes"],
-        due_by=sla["due_by"],
-        duplicate_warning=duplicate_warning,
+        severity=Severity.medium,
     )
     db.add(ticket)
     db.commit()
     db.refresh(ticket)
 
-    hours = round(sla["sla_minutes"] / 60, 1)
     log_activity(
-        db, ticket, "AI System",
-        f"Ticket auto-classified as {result.category} / {result.priority} / "
-        f"{result.difficulty} difficulty, routed to {result.assigned_team}. "
-        f"User urgency: {payload.user_priority}/5. "
-        f"Target resolution: {hours}h by {sla['due_by'].strftime('%b %d, %H:%M UTC')} "
-        f"(confidence {result.confidence}%).",
+        db, ticket, "System",
+        "Ticket created. AI analysis pending in background.",
     )
-
-    if duplicate_warning:
-        log_activity(
-            db, ticket, "AI System",
-            f"Possible duplicate detected: {duplicate_match['ticket_no']} -- "
-            f"admin should review and merge if needed.",
-        )
-
     db.commit()
+
+    background_tasks.add_task(background_process_ticket_creation, ticket.ticket_no, payload.email)
 
     return ticket
 
@@ -196,6 +250,7 @@ def update_ticket(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket not found")
 
     changes = []
+    update_data = payload.model_dump(exclude_unset=True)
 
     if payload.status and payload.status != ticket.status.value:
         old = ticket.status.value
@@ -212,9 +267,11 @@ def update_ticket(
         ticket.severity = Severity(payload.severity)
         changes.append(f"severity: {old} -> {ticket.severity.value}")
 
-    if payload.assigned_engineer and payload.assigned_engineer != ticket.assigned_engineer:
-        ticket.assigned_engineer = payload.assigned_engineer
-        changes.append(f"assigned engineer: {ticket.assigned_engineer}")
+    if "assigned_engineer" in update_data:
+        new_eng = update_data["assigned_engineer"]
+        if new_eng != ticket.assigned_engineer:
+            ticket.assigned_engineer = new_eng
+            changes.append(f"assigned engineer: {new_eng or 'Unassigned'}")
 
     if payload.category:
         ticket.category = payload.category
@@ -271,6 +328,7 @@ def delete_ticket(
 @router.post("/{ticket_no}/analyze", response_model=TicketOut)
 def reanalyze_ticket(
     ticket_no: str,
+    background_tasks: BackgroundTasks,
     # current_admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
@@ -278,32 +336,21 @@ def reanalyze_ticket(
     if not ticket:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket not found")
 
-    result = classify_ticket(
-        ticket.title,
-        ticket.content,
-        ticket.technology_app_item,
-        ticket.user_priority or 3,
-    )
-    sla = compute_sla(result.priority, result.difficulty, ticket.created_on)
+    ticket.category = None
+    ticket.priority = None
+    ticket.difficulty = None
+    ticket.assigned_team = None
+    ticket.ai_recommended_steps = None
+    ticket.ai_confidence = None
+    ticket.ai_summary = None
+    ticket.sla_minutes = None
+    ticket.due_by = None
 
-    ticket.category = result.category
-    ticket.priority = result.priority
-    ticket.difficulty = result.difficulty
-    ticket.assigned_team = result.assigned_team
-    ticket.ai_recommended_steps = result.recommended_steps
-    ticket.ai_confidence = result.confidence
-    ticket.ai_summary = result.summary
-    ticket.sla_minutes = sla["sla_minutes"]
-    ticket.due_by = sla["due_by"]
-
-    hours = round(sla["sla_minutes"] / 60, 1)
-    log_activity(
-        db, ticket, "AI System",
-        f"Re-analyzed: {result.category} / {result.priority} / {result.difficulty} difficulty, "
-        f"routed to {result.assigned_team}. Target resolution: {hours}h "
-        f"by {sla['due_by'].strftime('%b %d, %H:%M UTC')} (confidence {result.confidence}%).",
-    )
+    log_activity(db, ticket, "System", "Re-analysis triggered in background.")
     db.commit()
+
+    background_tasks.add_task(background_reanalyze_ticket, ticket_no)
+
     db.refresh(ticket)
     return ticket
 

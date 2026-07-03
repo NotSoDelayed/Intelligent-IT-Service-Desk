@@ -45,7 +45,14 @@ export function ConfirmationDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !loading) {
+            e.preventDefault();
+            handleConfirm();
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription asChild={typeof description !== 'string'}>

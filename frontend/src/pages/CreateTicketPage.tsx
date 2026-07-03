@@ -1,6 +1,6 @@
 import { useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient, useQuery } from '@tanstack/react-query';
 import {
   AppWindow,
   ArrowRight,
@@ -32,7 +32,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { LoadingButton, PageHeader } from '@/components/shared';
 import { PriorityBadge } from '@/components/shared/PriorityBadge';
 import { StatusBadge } from '@/components/shared/StatusBadge';
-import { createTicket } from '@/features/tickets/api/tickets';
+import { createTicket, getTicket } from '@/features/tickets/api/tickets';
 import type { TicketCreatePayload, TicketDetailDto } from '@/features/tickets/types';
 import { formatBackendCategory, toUiPriority, toUiStatus } from '@/features/tickets/utils/normalization';
 
@@ -84,6 +84,17 @@ export default function CreateTicketPage() {
   const [departmentType, setDepartmentType] = useState<string>('');
   const [errors, setErrors] = useState<FormErrors>({});
   const [createdTicket, setCreatedTicket] = useState<TicketDetailDto | null>(null);
+
+  const polledTicketQuery = useQuery({
+    queryKey: ['ticket', createdTicket?.ticket_no],
+    queryFn: () => getTicket(createdTicket?.ticket_no ?? ''),
+    enabled: Boolean(createdTicket?.ticket_no),
+    refetchInterval: (query) => {
+      return query.state.data && !query.state.data.category ? 3000 : false;
+    }
+  });
+
+  const ticketToDisplay = polledTicketQuery.data || createdTicket;
 
   const createMutation = useMutation({
     mutationFn: createTicket,
@@ -152,8 +163,8 @@ export default function CreateTicketPage() {
         }
       />
 
-      {createdTicket ? (
-        <TicketCreatedResult ticket={createdTicket} onCreateAnother={resetForm} />
+      {createdTicket && ticketToDisplay ? (
+        <TicketCreatedResult ticket={ticketToDisplay} onCreateAnother={resetForm} />
       ) : (
         <form onSubmit={handleSubmit} className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_360px]">
           <div className="space-y-6">
@@ -377,9 +388,11 @@ function TicketCreatedResult({
           </CardHeader>
           <CardContent className="space-y-5 p-6 pt-0">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline" className="text-sm">
+              <Badge variant="outline" className="text-2xl p-4">
                 {ticket.ticket_no}
               </Badge>
+            </div>
+            <div className="flex items-center gap-2">
               <StatusBadge status={toUiStatus(ticket.status)} />
               {ticket.priority && <PriorityBadge priority={toUiPriority(ticket.priority)} />}
               {ticket.sla_status && <Badge variant="secondary">{ticket.sla_status}</Badge>}

@@ -10,16 +10,29 @@ import {
   Fingerprint,
   History,
   RefreshCw,
+  RotateCcw,
   ShieldCheck,
   Trash2,
   User,
   UserCog,
+  UserMinus,
+  UserPlus,
 } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   ConfirmationDialog,
   ErrorState,
@@ -35,6 +48,7 @@ import {
   getTicket,
   getTicketComments,
   reanalyzeTicket,
+  updateTicket,
   updateTicketStatus,
   addTicketComment,
 } from '@/features/tickets/api/tickets';
@@ -56,17 +70,28 @@ export default function TicketDetailsPage() {
   const [closeOpen, setCloseOpen] = useState(false);
   const [resolveOpen, setResolveOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [unresolveOpen, setUnresolveOpen] = useState(false);
+  const [assignOpen, setAssignOpen] = useState(false);
+  const [unassignOpen, setUnassignOpen] = useState(false);
+  const [assigneeName, setAssigneeName] = useState('');
 
   const ticketQuery = useQuery({
     queryKey: ['ticket', id],
     queryFn: () => getTicket(id ?? ''),
     enabled: Boolean(id),
+    refetchInterval: (query) => {
+      return query.state.data && !query.state.data.category ? 3000 : false;
+    }
   });
 
   const commentsQuery = useQuery({
     queryKey: ['ticket-comments', id],
     queryFn: () => getTicketComments(id ?? ''),
     enabled: Boolean(id),
+    refetchInterval: () => {
+      const t = queryClient.getQueryData<TicketDetailDto>(['ticket', id]);
+      return t && !t.category ? 3000 : false;
+    }
   });
 
   const reanalyzeMutation = useMutation({
@@ -77,7 +102,7 @@ export default function TicketDetailsPage() {
         queryClient.invalidateQueries({ queryKey: ['ticket-comments', id] }),
       ]);
       queryClient.setQueryData(['ticket', id], ticket);
-      toast.success('Ticket reanalyzed successfully.');
+      toast.success('Ticket re-analysis in progress...');
       setReanalyzeOpen(false);
     },
     onError: () => {
@@ -101,6 +126,28 @@ export default function TicketDetailsPage() {
     },
   });
 
+  const assignMutation = useMutation({
+    mutationFn: (engineerName: string | null) => updateTicket(id ?? '', { assigned_engineer: engineerName }),
+    onSuccess: async (ticket, engineerName) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['ticket', id] }),
+        queryClient.invalidateQueries({ queryKey: ['ticket-comments', id] }),
+      ]);
+      queryClient.setQueryData(['ticket', id], ticket);
+      if (engineerName) {
+        toast.success(`Ticket assigned to ${ticket.assigned_engineer}.`);
+      } else {
+        toast.success('Ticket unassigned.');
+      }
+      setAssignOpen(false);
+      setUnassignOpen(false);
+      setAssigneeName('');
+    },
+    onError: () => {
+      toast.error('We could not update the assignment. Please try again.');
+    },
+  });
+
   const resolveMutation = useMutation({
     mutationFn: () => updateTicketStatus(id ?? '', toBackendStatus('resolved')),
     onSuccess: async (ticket) => {
@@ -114,6 +161,22 @@ export default function TicketDetailsPage() {
     },
     onError: () => {
       toast.error('We could not mark this ticket as done. Please try again.');
+    },
+  });
+
+  const unresolveMutation = useMutation({
+    mutationFn: () => updateTicketStatus(id ?? '', toBackendStatus('open')),
+    onSuccess: async (ticket) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['ticket', id] }),
+        queryClient.invalidateQueries({ queryKey: ['ticket-comments', id] }),
+      ]);
+      queryClient.setQueryData(['ticket', id], ticket);
+      toast.success('Ticket marked as undone.');
+      setUnresolveOpen(false);
+    },
+    onError: () => {
+      toast.error('We could not mark this ticket as undone. Please try again.');
     },
   });
 
@@ -192,19 +255,56 @@ export default function TicketDetailsPage() {
             <Button
               variant="outline"
               onClick={() => setReanalyzeOpen(true)}
-              disabled={reanalyzeMutation.isPending || isLoading}
+              disabled={reanalyzeMutation.isPending || isLoading || (ticket ? !ticket.category : false)}
             >
-              <RefreshCw className={cn('size-4', reanalyzeMutation.isPending && 'animate-spin')} />
+              <RefreshCw className={cn('size-4', (reanalyzeMutation.isPending || (ticket && !ticket.category)) && 'animate-spin')} />
               Reanalyze
             </Button>
-            <Button
-              variant="outline"
-              onClick={() => setResolveOpen(true)}
-              disabled={resolveMutation.isPending || isLoading || ticket?.status === 'Resolved' || ticket?.status === 'Closed'}
-            >
-              <CheckCircle2 className="size-4" />
-              Mark as Done
-            </Button>
+            {ticket?.status !== 'Resolved' && ticket?.status !== 'Closed' && (
+              <>
+                {ticket?.assigned_engineer ? (
+                  <Button
+                    variant="outline"
+                    onClick={() => setUnassignOpen(true)}
+                    disabled={assignMutation.isPending || isLoading}
+                  >
+                    <UserMinus className="size-4" />
+                    Unassign
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setAssigneeName('');
+                      setAssignOpen(true);
+                    }}
+                    disabled={assignMutation.isPending || isLoading}
+                  >
+                    <UserPlus className="size-4" />
+                    Assign to...
+                  </Button>
+                )}
+              </>
+            )}
+            {ticket?.status === 'Resolved' ? (
+              <Button
+                variant="outline"
+                onClick={() => setUnresolveOpen(true)}
+                disabled={unresolveMutation.isPending || isLoading}
+              >
+                <RotateCcw className={cn('size-4', unresolveMutation.isPending && 'animate-spin')} />
+                Mark as Undone
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                onClick={() => setResolveOpen(true)}
+                disabled={resolveMutation.isPending || isLoading || ticket?.status === 'Closed'}
+              >
+                <CheckCircle2 className="size-4" />
+                Mark as Done
+              </Button>
+            )}
             <Button
               variant="outline"
               onClick={() => setCloseOpen(true)}
@@ -228,7 +328,6 @@ export default function TicketDetailsPage() {
       {isLoading ? <TicketDetailsSkeleton /> : ticket && (
         <TicketDetailsContent
           ticket={ticket}
-          comments={comments}
           timeline={timeline}
           onAddComment={(msg) => addCommentMutation.mutateAsync(msg)}
           isAddingComment={addCommentMutation.isPending}
@@ -266,6 +365,16 @@ export default function TicketDetailsPage() {
         }}
       />
       <ConfirmationDialog
+        open={unresolveOpen}
+        onOpenChange={setUnresolveOpen}
+        title="Mark ticket as undone?"
+        description="This will revert the ticket status back to open."
+        confirmLabel="Mark as Undone"
+        onConfirm={async () => {
+          await unresolveMutation.mutateAsync();
+        }}
+      />
+      <ConfirmationDialog
         open={deleteOpen}
         onOpenChange={setDeleteOpen}
         title="Delete ticket?"
@@ -276,21 +385,71 @@ export default function TicketDetailsPage() {
           await deleteMutation.mutateAsync();
         }}
       />
+
+      <ConfirmationDialog
+        open={unassignOpen}
+        onOpenChange={setUnassignOpen}
+        title="Unassign ticket?"
+        description={`This will remove ${ticket?.assigned_engineer} from this ticket.`}
+        confirmLabel="Unassign"
+        onConfirm={async () => {
+          await assignMutation.mutateAsync(null);
+        }}
+      />
+
+      <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
+        <DialogContent
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && assigneeName.trim() && !assignMutation.isPending) {
+              e.preventDefault();
+              assignMutation.mutate(assigneeName);
+            }
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Assign Ticket</DialogTitle>
+            <DialogDescription>
+              Enter the username of the engineer you want to assign this ticket to.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <div className="space-y-2">
+              <Label htmlFor="assignee">Engineer Username</Label>
+              <Input
+                id="assignee"
+                value={assigneeName}
+                onChange={(e) => setAssigneeName(e.target.value)}
+                placeholder="Doe John"
+                disabled={assignMutation.isPending}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAssignOpen(false)} disabled={assignMutation.isPending}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => assignMutation.mutate(assigneeName)}
+              disabled={!assigneeName.trim() || assignMutation.isPending}
+            >
+              Assign
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
 function TicketDetailsContent({
   ticket,
-  comments,
   timeline,
   onAddComment,
   isAddingComment,
 }: {
   ticket: TicketDetailDto;
-  comments: TicketComment[];
   timeline: TimelineEvent[];
-  onAddComment: (msg: string) => Promise<void>;
+  onAddComment: (msg: string) => Promise<any>;
   isAddingComment: boolean;
 }) {
   const [newComment, setNewComment] = useState('');
@@ -322,10 +481,6 @@ function TicketDetailsContent({
               </div>
 
               <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                <Badge variant="outline" className="gap-1.5">
-                  <Fingerprint className="size-3.5" />
-                  {ticket.ticket_no}
-                </Badge>
                 <Badge variant="outline" className="gap-1.5">
                   <User className="size-3.5" />
                   {ticket.author}
@@ -552,7 +707,7 @@ function buildTimeline(ticket?: TicketDetailDto, comments: TicketComment[] = [])
     events.push({
       id: `comment-${comment.id}`,
       kind: comment.is_system ? 'system' : 'comment',
-      title: comment.is_system ? 'System note' : comment.author_name,
+      title: comment.is_system ? 'System' : comment.author_name,
       body: comment.message,
       timestamp: comment.created_at,
     });

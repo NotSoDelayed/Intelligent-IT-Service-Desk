@@ -77,7 +77,7 @@ export default function TicketListPage() {
 
   const hasFilters = search.trim() !== '' || status !== 'all' || priority !== 'all' || category !== 'all';
 
-  const { data, isLoading } = useQuery({
+  const { data } = useQuery({
     queryKey: ['ticket-list', { search, status, priority, category, sort, page }],
     queryFn: () => listTickets({
       search: search.trim() || undefined,

@@ -26,7 +26,7 @@ export interface TicketCreatePayload {
 export interface TicketUpdateAdminPayload {
   status?: TicketBackendStatus;
   severity?: TicketBackendSeverity;
-  assigned_engineer?: string;
+  assigned_engineer?: string | null;
   category?: TicketBackendCategory;
   priority?: TicketBackendPriority;
   difficulty?: TicketBackendDifficulty;
