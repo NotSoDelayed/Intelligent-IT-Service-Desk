@@ -4,15 +4,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from activity_log import log_activity
-from auth import get_current_admin
 from classifier import check_duplicate, classify_ticket, compute_sla
 from database import get_db
-from models import Severity, Ticket, TicketComment, TicketStatus, User
+from models import Severity, Ticket, TicketComment, TicketStatus
 from schemas import (
     CommentCreate,
     CommentOut,
     TicketCreate,
-    TicketListOut,
     TicketOut,
     TicketPageOut,
     TicketUpdateAdmin,
