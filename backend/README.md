@@ -1,11 +1,33 @@
 # Intelligent IT Service Desk Automation Platform — Backend
 
-FastAPI backend that ingests support tickets, runs AI triage (category,
-priority, difficulty, team routing, recommended troubleshooting steps),
-computes an SLA time budget per ticket, and exposes role-based APIs for
-normal users and admins.
+## 1. Project Overview
 
-## Project structure
+This project is a FastAPI backend for an **AI-powered IT service desk**.
+Instead of a human triage agent manually reading every incoming support
+ticket, the system does it automatically:
+
+- Anyone can submit a ticket without an account (name, email, department,
+  title, description, affected technology/app/item, self-reported
+  urgency).
+- Gemini (with a deterministic rule-based fallback) classifies the ticket
+  into a category, priority, difficulty, and assigned team, and generates
+  troubleshooting steps for the engineer.
+- The system checks whether the submitter already has a similar open
+  ticket (AI-powered duplicate detection) so the same issue doesn't get
+  filed and worked twice.
+- An SLA time budget (target resolution time + deadline) is computed from
+  priority × difficulty, and its live status (On Track / At Risk /
+  Overdue / Met / Breached) is tracked automatically.
+- Admins get a filterable, paginated, SLA-sorted queue, a dashboard of
+  aggregate metrics, and the ability to update/re-analyze/comment on
+  tickets.
+
+The goal is to reduce the manual overhead of first-line IT support:
+faster routing, consistent prioritization, fewer duplicate tickets, and
+visibility into which tickets are at risk of breaching their SLA.
+
+
+### Project structure
 
 ```
 backend/
@@ -36,118 +58,348 @@ mount routers) -- all route logic lives in `routers/`, split by area so
 multiple people can work on different route groups without colliding on
 one file.
 
-## Setup
 
-Requires [uv](https://docs.astral.sh/uv/) and Python 3.14 (uv will fetch
-3.14 automatically if you don't have it installed).
+---
+
+## 2. Setup Instructions
+
+### Prerequisites
+- Python **3.14** (pinned via `.python-version`; [uv](https://docs.astral.sh/uv/)
+  will fetch it automatically if you don't have it installed)
+- [`uv`](https://docs.astral.sh/uv/) for dependency management and running the app
+- A free [Gemini API key](https://aistudio.google.com/apikey) (optional —
+  the system runs fully without one via a rule-based fallback, but AI
+  classification and semantic duplicate detection require it)
+
+### Install dependencies
 
 ```bash
 cd backend
-uv sync                  # creates .venv and installs everything from pyproject.toml
+uv sync
 ```
 
-Your `.env` already has placeholders -- just fill in `GEMINI_API_KEY`
-(get one free at https://aistudio.google.com/apikey). Everything else has
-sensible defaults.
+This creates a `.venv` and installs everything pinned in `pyproject.toml` / `uv.lock`.
 
-## Run it
+### Configure environment variables
+
+Copy/create a `.env` file at the project root (`backend/.env`, not
+committed to Git) with the following keys:
+
+```
+SECRET_KEY=change-this-to-a-long-random-secret-string
+ACCESS_TOKEN_EXPIRE_MINUTES=480
+DATABASE_URL=sqlite:///./data/service_desk.db
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-2.5-flash
+ADMIN_EMAIL=admin@company.com
+ADMIN_PASSWORD=Admin@12345
+ADMIN_FULL_NAME=IT Admin
+```
+
+- **`SECRET_KEY`** — used to sign JWTs. Generate a real one before any
+  real deployment/demo: `openssl rand -hex 32`
+- **`GEMINI_API_KEY`** — leave blank to run entirely on the rule-based
+  classifier/duplicate-checker; fill it in to get real AI classification
+  and semantic duplicate detection.
+- **`ADMIN_EMAIL` / `ADMIN_PASSWORD`** — used to auto-seed the one admin
+  account on first startup.
+
+No secrets are committed to the repo — `.env` is expected to be created
+locally by whoever runs the project.
+
+---
+
+## 3. Usage
+
+### Run the server
 
 ```bash
 uv run uvicorn main:app --reload --app-dir src --port 8000
 ```
 
-`--app-dir src` is what makes `main.py` (and its flat imports like
-`from config import settings`) resolve correctly -- always run this
-command from the `backend/` folder, not from inside `src/`, so `.env` and
-the SQLite database path resolve correctly too.
+Run this from the `backend/` folder (not from inside `src/`) so `.env`
+and the SQLite database path resolve correctly.
 
-Open `http://localhost:8000/docs` for interactive Swagger docs -- this is
-the source of truth for exact field names/types if you're building the
-frontend separately, more reliable than reading it off chat.
+Once running, open **`http://localhost:8000/docs`** for interactive
+Swagger docs — this is the most reliable source of truth for exact field
+names/types.
 
-A default admin account is auto-created on first startup using the
-`ADMIN_EMAIL` / `ADMIN_PASSWORD` values in `.env`.
-
-## Linting
+### Example: submit a ticket
 
 ```bash
-uv run ruff check .
+curl -X POST http://localhost:8000/tickets \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Aisha",
+    "email": "aisha@co.com",
+    "department": "Finance",
+    "title": "VPN keeps disconnecting",
+    "content": "My VPN drops every few minutes, whole team cannot work today.",
+    "technology_app_item": "Cisco VPN",
+    "user_priority": 5
+  }'
 ```
 
-## AI classification (Gemini)
+**Expected output** (abridged):
+```json
+{
+  "ticket_no": "TCK-20260702-AB12CD",
+  "status": "Open",
+  "category": "Network",
+  "priority": "P1",
+  "difficulty": "Hard",
+  "assigned_team": "Network Operations",
+  "sla_minutes": 576,
+  "due_by": "2026-07-02T15:12:00",
+  "duplicate_warning": null
+}
+```
 
-Set `GEMINI_API_KEY` in `.env` to use real AI classification. If left
-blank, the system automatically falls back to a deterministic
-keyword-based classifier, so the app still runs end-to-end without a key
--- useful for developing the frontend before you have one.
+### Example: track a ticket (public, no login)
 
-## SLA / time-budget engine
+```bash
+curl http://localhost:8000/tickets/TCK-20260702-AB12CD
+```
 
-Every ticket gets an AI-assigned `difficulty` (Easy / Medium / Hard) in
-addition to `priority` (P1-P4). These combine into a target resolution
-time (`sla_minutes` / `due_by`) so easy tickets get a short window and
-clear the queue fast, while harder tickets get realistically more time --
-urgent priority always compresses the window further regardless of
-difficulty. The admin ticket queue (`GET /admin/tickets`) is sorted by
-this deadline by default, so whatever needs attention soonest surfaces
-first.
+### Example: admin login
 
-## Auth model
+```bash
+curl -X POST http://localhost:8000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@company.com","password":"Admin@12345"}'
+```
 
-- **Register/login** issues a JWT (`Authorization: Bearer <token>`).
-- Every user has a `role`: `user` or `admin`.
-- `user` can: create tickets, view their own tickets, track any ticket by
-  ticket number, comment on their own tickets.
-- `admin` can: do everything a user can, plus view/filter all tickets,
-  update status/severity/assignment/priority/difficulty (which
-  recalculates SLA), re-run AI analysis, view dashboard metrics, delete
-  tickets.
+Returns a JWT to use as `Authorization: Bearer <token>` on admin
+endpoints.
 
-## Core flow
+---
 
-1. User registers/logs in.
-2. User submits a ticket (`POST /tickets`) -- title, description, and the
-   affected technology/app/item. Gemini classifies it immediately and the
-   response includes the generated `ticket_no`, AI category/priority/
-   difficulty/team/steps, and the SLA deadline.
-3. User can check progress any time via `GET /tickets/track/{ticket_no}`.
-4. Admin sees the SLA-sorted queue on `GET /admin/tickets` and the
-   dashboard at `GET /admin/dashboard` (counts by status/severity/
-   category/team/difficulty, SLA compliance rate, average resolution
-   time).
-5. Admin updates a ticket via `PATCH /admin/tickets/{ticket_no}` --
-   status changes auto-stamp `ticket_start_date` / `ticket_closed_date` /
-   `closed_ticket`; priority/difficulty changes auto-recalculate the SLA.
+## 4. API / Function Reference
 
-## Ticket fields (matches your dataset columns)
+### `classifier.py`
 
-`ticket_no`, `title`, `content`, `status`, `author`, `age` (computed),
-`customer`, `created_on`, `ticket_start_date`, `ticket_closed_date`,
-`technology_app_item`, `severity`, `assigned_engineer`, `closed_ticket` --
-plus AI/SLA-derived fields: `category`, `priority`, `difficulty`,
-`assigned_team`, `ai_recommended_steps`, `ai_confidence`, `ai_summary`,
-`sla_minutes`, `due_by`, `sla_status`.
-
-## Endpoints summary
-
-| Method | Path | Who | Purpose |
+| Function | Purpose | Input | Output |
 |---|---|---|---|
-| GET | /health | anyone | health check |
-| POST | /auth/register | anyone | create account |
-| POST | /auth/login | anyone | get JWT |
-| GET | /auth/me | logged-in | current user info |
-| POST | /tickets | user | submit ticket (AI + SLA run automatically) |
-| GET | /tickets/my | user | list own tickets |
-| GET | /tickets/track/{ticket_no} | logged-in | check status by ticket ID |
-| GET | /tickets/{ticket_no} | owner/admin | full ticket detail |
-| POST/GET | /tickets/{ticket_no}/comments | owner/admin | ticket activity thread |
-| GET | /admin/tickets | admin | SLA-sorted queue, filterable |
-| PATCH | /admin/tickets/{ticket_no} | admin | update status/severity/assignment/priority/difficulty |
-| POST | /admin/tickets/{ticket_no}/analyze | admin | re-run AI classifier |
-| DELETE | /admin/tickets/{ticket_no} | admin | delete ticket |
-| GET | /admin/dashboard | admin | metrics + SLA compliance summary |
+| `classify_ticket(title, content, tech_item, user_priority)` | Main entry point for AI triage. Tries Gemini, falls back to rule-based. | `title: str`, `content: str`, `tech_item: str`, `user_priority: int (1-5)` | `ClassificationResult` dataclass — category, priority, difficulty, assigned_team, recommended_steps, user_self_help_steps, self_help_note, confidence, summary |
+| `_call_gemini(title, content, tech_item, user_priority)` | Internal. Calls the Gemini API with a fixed system prompt and parses the JSON response. | same as above | `dict` or `None` if no API key / call fails |
+| `_rule_based_classify(title, content, tech_item, user_priority)` | Internal. Deterministic keyword-matching fallback so the app works with no API key. | same as above | `dict` with the same shape as the Gemini response |
+| `check_duplicate(new_title, new_content, existing_tickets)` | Checks if a new ticket matches any of the submitter's existing open tickets. Tries Gemini first, falls back to keyword overlap. | `new_title: str`, `new_content: str`, `existing_tickets: list[dict]` (each with `ticket_no`, `title`, `content`) | matching ticket `dict`, or `None` |
+| `_check_duplicate_gemini(...)` | Internal. Asks Gemini to semantically judge whether the new ticket matches any candidate. | same shape as `check_duplicate` | matching ticket `dict` or `None` |
+| `_check_duplicate_keywords(...)` | Internal. Keyword-overlap fallback (40% shared significant words = duplicate). | same shape as `check_duplicate`, plus `threshold: float` | matching ticket `dict` or `None` |
+| `compute_sla(priority, difficulty, created_on)` | Computes the SLA time budget for a ticket. | `priority: str`, `difficulty: str`, `created_on: datetime` | `dict` with `sla_minutes` and `due_by` |
+| `sla_status(status, due_by, closed_on)` | Computes the live human-readable SLA status. | `status: str`, `due_by: datetime | None`, `closed_on: datetime | None` | `str` — one of On Track / At Risk / Overdue / Met / Breached / Unscheduled |
 
-## Sample data
+### `models.py`
 
-`data/sample_tickets.csv` has 5 example rows matching every required
-column, useful for seeding a demo or testing your frontend tables.
+| Model | Purpose |
+|---|---|
+| `User` | Admin (and future user) accounts — email, hashed password, role, department. |
+| `Ticket` | Core entity. Holds submitter info, AI classification output, SLA fields, and `duplicate_warning`. Exposes computed properties `age` (days open) and `sla_status` (delegates to `classifier.sla_status`). |
+| `TicketComment` | Activity/comment thread on a ticket — used both for admin notes and AI System log entries (classification, re-analysis, duplicate warnings). |
+
+### `schemas.py` (Pydantic contracts)
+
+- `TicketCreate` — public submission payload (name, email, department, title, content, technology_app_item, user_priority).
+- `TicketOut` — full ticket detail response, including all AI/SLA/duplicate fields.
+- `TicketListOut` / `TicketPageOut` — lighter payload + pagination wrapper for the admin queue.
+- `TicketUpdateAdmin` — fields an admin may PATCH (status, severity, assigned_engineer, category, priority, difficulty, assigned_team).
+- `CommentCreate` / `CommentOut` — activity thread entries.
+- `DashboardStats` — aggregate metrics shape for the admin dashboard.
+
+### `routers/tickets.py` (endpoints)
+
+| Function | Route | Purpose |
+|---|---|---|
+| `create_ticket` | `POST /tickets` | Public. Runs `classify_ticket`, `check_duplicate`, `compute_sla`, saves the ticket, logs AI activity. |
+| `list_tickets` | `GET /tickets` | Paginated, filterable (status/severity/category/priority/team/search), sortable by SLA deadline or newest. |
+| `get_ticket` | `GET /tickets/{ticket_no}` | Public. Look up a ticket by its number — used for tracking. |
+| `update_ticket` | `PATCH /tickets/{ticket_no}` | Admin. Updates status/severity/engineer/category/priority/difficulty/team; auto-stamps timestamps and recalculates SLA when priority/difficulty change. |
+| `delete_ticket` | `DELETE /tickets/{ticket_no}` | Admin. Removes a ticket. |
+| `reanalyze_ticket` | `POST /tickets/{ticket_no}/analyze` | Admin. Re-runs `classify_ticket` and recomputes SLA on an existing ticket. |
+| `add_comment` / `list_comments` | `POST` / `GET /tickets/{ticket_no}/comments` | Admin. Adds/reads the activity thread. |
+
+**Module interaction:** `routers/tickets.py` is the only caller of
+`classifier.py`'s public functions. `classifier.py` never touches the
+database directly — it's pure logic that takes primitives in and returns
+dataclasses/dicts out, which keeps it independently testable.
+`models.py` and `schemas.py` are kept separate on purpose (ORM vs. API
+contract) so the database schema can evolve without automatically
+changing what's exposed over the API, and vice versa.
+
+---
+
+## 5. Data / Assumptions
+
+**Storage:** SQLite via SQLAlchemy (`DATABASE_URL` in `.env`). Three
+tables: `users`, `tickets`, `ticket_comments`.
+
+**Ticket identity:** tickets are identified externally by a generated
+`ticket_no` (e.g. `TCK-20260702-AB12CD`), not the internal integer `id`,
+so the ticket number can be safely shared with the public tracking
+endpoint.
+
+**Assumptions made:**
+- Ticket submitters do **not** have accounts — identity for duplicate
+  detection is the **email address they typed in the form**, not an
+  authenticated user ID. If two different people share an email, or one
+  person uses two different emails, duplicate detection will
+  under/over-match.
+- Duplicate detection only compares against a submitter's own **open**
+  tickets (`Open` / `In Progress` / `Pending User`) — it never scans
+  closed/resolved history or other users' tickets.
+- The Gemini classification prompt assumes English-language ticket text;
+  no language detection or translation is performed.
+- `user_priority` (1–5) is treated as a *hint*, not ground truth — the
+  classifier is explicitly instructed to override it if the description
+  doesn't match.
+- The keyword-overlap fallback (both classification and duplicate
+  detection) is a simplification: it has no understanding of synonyms,
+  negation, or context — it only measures shared significant words after
+  stripping a small stop-word list.
+
+**Data flow:** `TicketCreate` (submission) → `classify_ticket()` (AI/
+rule-based triage) → `check_duplicate()` (dedup check against the same
+email's open tickets) → `compute_sla()` (deadline calculation) → `Ticket`
+row saved → `TicketOut` returned to the caller → activity log entries
+written to `ticket_comments`. Every subsequent read (`GET`,
+list/dashboard) computes `age` and `sla_status` live from stored
+timestamps rather than storing them as denormalized columns, so they're
+always accurate as of the moment they're read.
+
+---
+
+## 6. Testing
+
+Testing was done through direct HTTP calls against a locally running
+instance (via `curl` and small Python scripts using `requests`), rather
+than an automated pytest suite. This covered the full ticket lifecycle
+end to end:
+
+**Scenarios exercised:**
+- Health check (`GET /health`)
+- Ticket submission with AI classification, including checking that
+  `ticket_no`, `priority`, `difficulty`, and `sla_minutes` were populated
+  correctly
+- Easy-difficulty tickets returning populated `user_self_help_steps` +
+  `self_help_note`
+- Duplicate submission from the same email with a similarly-worded
+  problem, to confirm `duplicate_warning` gets set and logged
+- Admin login and JWT issuance
+- Paginated/filtered ticket listing
+- `PATCH` updates: status transitions (auto-stamping
+  `ticket_start_date`/`ticket_closed_date`/`closed_ticket`), and
+  priority/difficulty changes triggering SLA recalculation
+- Re-running AI analysis on an existing ticket
+- Adding and listing comments/activity log entries
+- Admin dashboard aggregate counts and SLA compliance rate
+- Deleting a ticket
+
+**How to reproduce:** start the server (see Usage), then exercise the
+endpoints above via `curl` or the Swagger UI at `/docs`, which lets you
+try every endpoint interactively without writing a script.
+
+**Correctness/determinism:** the rule-based fallback paths (classification
+and duplicate detection) are pure functions with no external calls, so
+their behavior is deterministic and was verified directly against known
+keyword inputs. The Gemini-backed paths are inherently non-deterministic
+(LLM output), so those were verified by manually inspecting output shape
+and reasonableness rather than exact-match assertions.
+
+**Linting:** `uv run ruff check .` — all checks passing.
+
+---
+
+## 7. Limitations
+
+- **Admin authorization is not currently enforced on the ticket routes.**
+  The `get_current_admin` dependency is imported but commented out on
+  `list_tickets`, `update_ticket`, `delete_ticket`, `reanalyze_ticket`,
+  `add_comment`, and `list_comments` in the current code — meaning these
+  endpoints are callable without a valid admin token. This should be
+  re-enabled before any real deployment.
+- **Duplicate detection is scoped to one submitter's email**, and only
+  against their currently open tickets. It will not catch duplicates
+  across different emails for the same underlying incident (e.g. an
+  outage reported by five different users), and is vulnerable to email
+  typos/variants.
+- **Duplicate detection has a 3-tier fallback (Gemini → local embeddings
+  → keyword overlap)**, so semantic matching survives even without a
+  Gemini key — the crude keyword path is now only a last resort. Ticket
+  *classification* (category/priority/difficulty) still falls straight
+  to the static keyword classifier without Gemini, and the embedding
+  similarity threshold (`0.72`) hasn't been tuned against real ticket
+  data yet.
+- **AI classification accuracy is not guaranteed.** Gemini output is
+  used directly with only light validation (checking the returned
+  category/priority/difficulty are in the allowed enum); a confidently
+  wrong classification isn't automatically caught, only surfaced via the
+  `confidence` score.
+- **Gemini calls now have a capped timeout (10s) and limited retries
+  (2, with backoff)**, so a hung Gemini call can no longer block a
+  request indefinitely. A slow or degraded Gemini API still adds
+  latency to `POST /tickets` and `POST /tickets/{ticket_no}/analyze`,
+  since calls remain synchronous — there's no async/background
+  execution yet.
+- **No email notifications, file attachments, or real-time updates.**
+  `author_email` is stored but no SMTP is wired up; there's no
+  attachment upload path; ticket updates are pull-based (poll the API),
+  not pushed via WebSockets.
+- **SQLite + synchronous SQLAlchemy** — fine for a demo/small deployment,
+  but not built for high concurrent write volume.
+- **No automated test suite** — testing was manual/scripted against a
+  running instance rather than a committed pytest suite, so there's no
+  CI regression safety net yet.
+
+---
+
+## 8. Architecture Reflection
+
+### Design choices
+
+The backend is deliberately split by concern: `models.py` (database
+shape) and `schemas.py` (API contract) are kept as two separate layers
+even though they overlap heavily, so the internal database schema is
+free to change without silently changing what the frontend receives, and
+vice versa. `classifier.py` is isolated from the database and FastAPI
+entirely — it's plain Python functions that take primitives in and
+return dataclasses/dicts out. That made it independently testable and
+meant the same duplicate-detection and classification logic could be
+reused from both `create_ticket` and `reanalyze_ticket` without
+duplicating logic in the router. Routes are grouped by resource
+(`tickets`, `admin`, `auth`) into separate router files so `main.py`
+stays a thin composition point, which matters mainly for letting
+multiple people work on different route groups without merge conflicts.
+
+### Trade-offs
+
+The overriding priority was **getting a working, demonstrable AI
+pipeline end-to-end** rather than production hardening. Concretely:
+SQLite over a networked database, synchronous Gemini calls over an async
+job queue, and a graceful-degradation rule-based fallback over requiring
+Gemini to be configured at all — all chosen so the system runs and is
+testable immediately, with or without external dependencies. Similarly,
+duplicate detection was scoped narrowly (same email, open tickets only)
+rather than attempting cross-user or historical matching, trading recall
+for simplicity and speed. Admin authorization enforcement was also
+deferred (see Limitations) in favor of iterating on functionality first
+— a trade-off that's acceptable for a prototype/demo but not for
+production.
+
+### Improvements
+
+Given more time, the next priorities would be: (1) re-enable and test
+`get_current_admin` on every admin-only route, (2) move Gemini calls to
+background/async execution so ticket submission doesn't block on LLM
+latency beyond the current capped timeout, (3) tune the embedding
+similarity threshold against real ticket data and consider applying the
+same local-embeddings approach to ticket classification itself, not just
+duplicate detection, (4) widen duplicate detection to consider
+recently-closed tickets and same-department submissions, not just
+same-email/open, and (5) add a proper automated test suite (pytest +
+fixtures) instead of manual/scripted verification, so regressions are
+caught automatically as the codebase grows.
+
+**Since the last revision:** added a timeout (10s) and limited retries
+with backoff to all Gemini calls, and added a local sentence-embeddings
+fallback (`sentence-transformers`) for duplicate detection, so semantic
+matching now survives even without a Gemini key.
