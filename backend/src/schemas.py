@@ -209,3 +209,29 @@ class DashboardStats(BaseModel):
     sla_met: int
     sla_breached: int
     sla_compliance_rate: float | None = None
+
+
+class AnalyticsSummary(BaseModel):
+    total_created: int
+    total_resolved: int
+    median_response_minutes: float | None
+    median_resolution_minutes: float | None
+
+
+class AnalyticsTrend(BaseModel):
+    date: str
+    created: int
+    resolved: int
+    median_response: float | None
+    median_resolution: float | None
+
+
+class AnalyticsDepartment(BaseModel):
+    name: str
+    count: int
+
+
+class AnalyticsOut(BaseModel):
+    summary: AnalyticsSummary
+    trend: list[AnalyticsTrend]
+    departments: list[AnalyticsDepartment]

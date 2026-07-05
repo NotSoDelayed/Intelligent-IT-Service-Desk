@@ -98,6 +98,7 @@ class Ticket(Base):
 
     owner = relationship("User", back_populates="tickets", foreign_keys=[author_id])
     comments = relationship("TicketComment", back_populates="ticket", cascade="all, delete-orphan")
+    analytics = relationship("TicketAnalytics", back_populates="ticket", uselist=False, cascade="all, delete-orphan")
 
     @property
     def age(self) -> int:
@@ -122,5 +123,15 @@ class TicketComment(Base):
     message = Column(Text, nullable=False)
     is_system = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
-
     ticket = relationship("Ticket", back_populates="comments")
+
+
+class TicketAnalytics(Base):
+    __tablename__ = "ticket_analytics"
+
+    ticket_id = Column(Integer, ForeignKey("tickets.id"), primary_key=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True, nullable=False)
+    first_responded_at = Column(DateTime, nullable=True)
+    resolved_at = Column(DateTime, nullable=True)
+
+    ticket = relationship("Ticket", back_populates="analytics")

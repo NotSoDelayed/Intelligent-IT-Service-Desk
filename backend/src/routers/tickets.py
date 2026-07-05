@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from activity_log import log_activity
 from classifier import check_duplicate, classify_ticket, compute_sla
 from database import get_db, SessionLocal
-from models import Severity, Ticket, TicketComment, TicketStatus
+from models import Severity, Ticket, TicketComment, TicketStatus, TicketAnalytics
 from schemas import (
     CommentCreate,
     CommentOut,
@@ -152,6 +152,9 @@ def create_ticket(
     db.commit()
     db.refresh(ticket)
 
+    analytics = TicketAnalytics(ticket_id=ticket.id)
+    db.add(analytics)
+
     log_activity(
         db, ticket, "System",
         "Ticket created. AI analysis pending in background.",
@@ -257,6 +260,9 @@ def update_ticket(
         ticket.status = TicketStatus(payload.status)
         if ticket.status == TicketStatus.in_progress and not ticket.ticket_start_date:
             ticket.ticket_start_date = datetime.utcnow()
+        if ticket.status == TicketStatus.resolved:
+            if ticket.analytics and not ticket.analytics.resolved_at:
+                ticket.analytics.resolved_at = datetime.utcnow()
         if ticket.status == TicketStatus.closed:
             ticket.ticket_closed_date = datetime.utcnow()
             ticket.closed_ticket = "Admin"
@@ -272,6 +278,8 @@ def update_ticket(
         if new_eng != ticket.assigned_engineer:
             ticket.assigned_engineer = new_eng
             changes.append(f"assigned engineer: {new_eng or 'Unassigned'}")
+            if new_eng and ticket.analytics and not ticket.analytics.first_responded_at:
+                ticket.analytics.first_responded_at = datetime.utcnow()
 
     if payload.category:
         ticket.category = payload.category
@@ -376,6 +384,10 @@ def add_comment(
         is_system=0,
     )
     db.add(comment)
+
+    if ticket.analytics and not ticket.analytics.first_responded_at:
+        ticket.analytics.first_responded_at = datetime.utcnow()
+
     db.commit()
     db.refresh(comment)
     return comment

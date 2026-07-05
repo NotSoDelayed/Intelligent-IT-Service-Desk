@@ -5,7 +5,7 @@ from auth import hash_password
 from config import settings
 from database import Base, engine, get_db
 from models import User, UserRole
-from routers import admin, auth_routes, health, tickets
+from routers import admin, auth_routes, health, tickets, analytics
 
 Base.metadata.create_all(bind=engine)
 
@@ -27,6 +27,7 @@ app.include_router(health.router)
 app.include_router(auth_routes.router)
 app.include_router(tickets.router)
 app.include_router(admin.router)
+app.include_router(analytics.router)
 
 
 @app.on_event("startup")
