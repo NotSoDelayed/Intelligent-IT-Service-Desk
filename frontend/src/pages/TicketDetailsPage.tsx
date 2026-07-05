@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, useEffect, useRef, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
   AlertTriangle,
@@ -93,6 +93,14 @@ export default function TicketDetailsPage() {
       return t && !t.category ? 3000 : false;
     }
   });
+
+  const previousCategory = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (previousCategory.current === null && ticketQuery.data?.category) {
+      queryClient.invalidateQueries({ queryKey: ['ticket-comments', id] });
+    }
+    previousCategory.current = ticketQuery.data?.category;
+  }, [ticketQuery.data?.category, queryClient, id]);
 
   const reanalyzeMutation = useMutation({
     mutationFn: () => reanalyzeTicket(id ?? ''),
@@ -252,14 +260,16 @@ export default function TicketDetailsPage() {
                 Back to Tickets
               </Link>
             </Button>
-            <Button
-              variant="outline"
-              onClick={() => setReanalyzeOpen(true)}
-              disabled={reanalyzeMutation.isPending || isLoading || (ticket ? !ticket.category : false)}
-            >
-              <RefreshCw className={cn('size-4', (reanalyzeMutation.isPending || (ticket && !ticket.category)) && 'animate-spin')} />
-              Reanalyze
-            </Button>
+            {ticket?.status !== 'Closed' && (
+              <Button
+                variant="outline"
+                onClick={() => setReanalyzeOpen(true)}
+                disabled={reanalyzeMutation.isPending || isLoading || (ticket ? !ticket.category : false)}
+              >
+                <RefreshCw className={cn('size-4', (reanalyzeMutation.isPending || (ticket && !ticket.category)) && 'animate-spin')} />
+                Reanalyze
+              </Button>
+            )}
             {ticket?.status !== 'Resolved' && ticket?.status !== 'Closed' && (
               <>
                 {ticket?.assigned_engineer ? (
@@ -286,33 +296,37 @@ export default function TicketDetailsPage() {
                 )}
               </>
             )}
-            {ticket?.status === 'Resolved' ? (
+            {ticket?.status !== 'Closed' && (
+              ticket?.status === 'Resolved' ? (
+                <Button
+                  variant="outline"
+                  onClick={() => setUnresolveOpen(true)}
+                  disabled={unresolveMutation.isPending || isLoading}
+                >
+                  <RotateCcw className={cn('size-4', unresolveMutation.isPending && 'animate-spin')} />
+                  Mark as Undone
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  onClick={() => setResolveOpen(true)}
+                  disabled={resolveMutation.isPending || isLoading}
+                >
+                  <CheckCircle2 className="size-4" />
+                  Mark as Done
+                </Button>
+              )
+            )}
+            {ticket?.status !== 'Closed' && (
               <Button
                 variant="outline"
-                onClick={() => setUnresolveOpen(true)}
-                disabled={unresolveMutation.isPending || isLoading}
+                onClick={() => setCloseOpen(true)}
+                disabled={closeMutation.isPending || isLoading}
               >
-                <RotateCcw className={cn('size-4', unresolveMutation.isPending && 'animate-spin')} />
-                Mark as Undone
-              </Button>
-            ) : (
-              <Button
-                variant="outline"
-                onClick={() => setResolveOpen(true)}
-                disabled={resolveMutation.isPending || isLoading || ticket?.status === 'Closed'}
-              >
-                <CheckCircle2 className="size-4" />
-                Mark as Done
+                <ShieldCheck className="size-4" />
+                Close Ticket
               </Button>
             )}
-            <Button
-              variant="outline"
-              onClick={() => setCloseOpen(true)}
-              disabled={closeMutation.isPending || isLoading || ticket?.status === 'Closed'}
-            >
-              <ShieldCheck className="size-4" />
-              Close Ticket
-            </Button>
             <Button
               variant="destructive"
               onClick={() => setDeleteOpen(true)}
@@ -519,27 +533,29 @@ function TicketDetailsContent({
               Activity History
             </div>
 
-            {timeline.map((event) => (
-              <div key={event.id} className="flex gap-4 rounded-xl border border-border p-4">
-                <div
-                  className={cn(
-                    'mt-1 flex size-9 shrink-0 items-center justify-center rounded-full',
-                    event.kind === 'system'
-                      ? 'bg-primary/10 text-primary'
-                      : 'bg-muted text-muted-foreground'
-                  )}
-                >
-                  {event.kind === 'system' ? <Bot className="size-4" /> : <UserCog className="size-4" />}
-                </div>
-                <div className="min-w-0 flex-1 space-y-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-sm font-medium text-foreground">{event.title}</p>
-                    <span className="text-xs text-muted-foreground">{formatDateTime(event.timestamp)}</span>
+            <div className="flex flex-col gap-2">
+              {timeline.map((event) => (
+                <div key={event.id} className="flex gap-4 rounded-xl border border-border p-2">
+                  <div
+                    className={cn(
+                      'mt-1 flex size-9 shrink-0 items-center justify-center rounded-full',
+                      event.kind === 'system'
+                        ? 'bg-primary/10 text-primary'
+                        : 'bg-muted text-muted-foreground'
+                    )}
+                  >
+                    {event.kind === 'system' ? <Bot className="size-4" /> : <UserCog className="size-4" />}
                   </div>
-                  <p className="text-sm text-muted-foreground">{event.body}</p>
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex flex-wrap items-center gap-3">
+                      <p className="text-sm font-medium text-foreground">{event.title}</p>
+                      <span className="text-xs text-muted-foreground">{formatDateTime(event.timestamp)}</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground">{event.body}</p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </CardContent>
         </Card>
       </div>
