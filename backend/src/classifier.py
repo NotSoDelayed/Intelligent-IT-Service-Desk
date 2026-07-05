@@ -7,14 +7,17 @@ from config import settings
 
 CATEGORIES = ["Network", "Hardware", "Software", "Access/Account", "Email", "Security", "Other"]
 TEAMS = {
-    "Network": "Network Operations",
-    "Hardware": "Desktop Support",
-    "Software": "Application Support",
-    "Access/Account": "Identity & Access Management",
-    "Email": "Messaging & Collaboration",
-    "Security": "Security Operations (SOC)",
-    "Other": "Service Desk Tier 1",
+    "Network": "Network Team",
+    "Hardware": "Hardware Team",
+    "Software": "Software Team",
+    "Access/Account": "Access & Security Team",
+    "Security": "Access & Security Team",
+    "Email": "General Team",
+    "Other": "General Team",
 }
+# Note: "System Team" isn't produced by the classifier on purpose -- it's
+# reserved for admins to manually assign via TicketUpdateAdmin.assigned_team
+# when a ticket is really an infra/systems issue regardless of AI category.
 PRIORITIES = ["P1", "P2", "P3", "P4"]
 DIFFICULTIES = ["Easy", "Medium", "Hard"]
 

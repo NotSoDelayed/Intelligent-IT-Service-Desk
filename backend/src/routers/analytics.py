@@ -25,12 +25,12 @@ def median(lst: list[float]) -> float | None:
 @router.get("", response_model=AnalyticsOut)
 def get_analytics(
     days: int = 7,
-    # current_admin: User = Depends(get_current_admin), # Requires admin privileges in prod
+    # current_admin: MockUser = Depends(get_current_admin), # Requires admin privileges in prod
     db: Session = Depends(get_db),
 ):
     cutoff = datetime.utcnow() - timedelta(days=days)
 
-    # We join Ticket to get the department
+    # Join Ticket to get the team a ticket was routed to.
     query = (
         db.query(TicketAnalytics, Ticket)
         .join(Ticket, Ticket.id == TicketAnalytics.ticket_id)
@@ -45,8 +45,9 @@ def get_analytics(
 
     # group by date string
     trend_dict: dict[str, dict[str, Any]] = {}
-    # group by department
-    dept_dict: dict[str, int] = {}
+    # group by team (Ticket has no `department` anymore -- assigned_team
+    # is the closest equivalent now that routing happens by team)
+    team_dict: dict[str, int] = {}
 
     for analytics, ticket in records:
         date_str = analytics.created_at.strftime("%Y-%m-%d")
@@ -59,7 +60,8 @@ def get_analytics(
             }
 
         trend_dict[date_str]["created"] += 1
-        dept_dict[ticket.department] = dept_dict.get(ticket.department, 0) + 1
+        team_name = ticket.assigned_team or "Unassigned"
+        team_dict[team_name] = team_dict.get(team_name, 0) + 1
 
         if analytics.first_responded_at:
             minutes = (analytics.first_responded_at - analytics.created_at).total_seconds() / 60.0
@@ -92,12 +94,12 @@ def get_analytics(
             )
         )
 
-    dept_list = []
-    for dept_name, count in sorted(dept_dict.items(), key=lambda x: x[1], reverse=True):
-        dept_list.append(AnalyticsDepartment(name=dept_name, count=count))
+    team_list = []
+    for team_name, count in sorted(team_dict.items(), key=lambda x: x[1], reverse=True):
+        team_list.append(AnalyticsDepartment(name=team_name, count=count))
 
     return AnalyticsOut(
         summary=summary,
         trend=trend_list,
-        departments=dept_list,
+        departments=team_list,
     )

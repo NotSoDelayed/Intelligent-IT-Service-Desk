@@ -14,11 +14,6 @@ def gen_ticket_no() -> str:
     return f"TCK-{datetime.utcnow().strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
 
 
-class UserRole(str, enum.Enum):
-    user = "user"
-    admin = "admin"
-
-
 class TicketStatus(str, enum.Enum):
     open = "Open"
     in_progress = "In Progress"
@@ -33,21 +28,6 @@ class Severity(str, enum.Enum):
     medium = "Medium"
     high = "High"
     urgent = "Urgent"
-
-
-class User(Base):
-    __tablename__ = "users"
-
-    id = Column(Integer, primary_key=True, index=True)
-    full_name = Column(String(150), nullable=False)
-    email = Column(String(150), unique=True, index=True, nullable=False)
-    hashed_password = Column(String(255), nullable=False)
-    role = Column(Enum(UserRole), default=UserRole.user, nullable=False)
-    department = Column(String(150), nullable=True)
-    is_active = Column(Integer, default=1)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    tickets = relationship("Ticket", back_populates="owner", foreign_keys="Ticket.author_id")
 
 
 class Ticket(Base):
@@ -72,9 +52,6 @@ class Ticket(Base):
     # --- user input ---
     user_priority = Column(Integer, nullable=True)
 
-    # --- system / relational fields ---
-    author_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-
     # --- AI-generated fields ---
     category = Column(String(100), nullable=True)
     priority = Column(String(20), nullable=True)
@@ -95,9 +72,10 @@ class Ticket(Base):
     # --- Duplicate detection result ---
     duplicate_warning = Column(Text, nullable=True)  # set if a similar open ticket was found
 
-    owner = relationship("User", back_populates="tickets", foreign_keys=[author_id])
     comments = relationship("TicketComment", back_populates="ticket", cascade="all, delete-orphan")
-    analytics = relationship("TicketAnalytics", back_populates="ticket", uselist=False, cascade="all, delete-orphan")
+    analytics = relationship(
+        "TicketAnalytics", back_populates="ticket", uselist=False, cascade="all, delete-orphan"
+    )
 
     @property
     def age(self) -> int:
@@ -127,10 +105,16 @@ class TicketComment(Base):
     message = Column(Text, nullable=False)
     is_system = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
+
     ticket = relationship("Ticket", back_populates="comments")
 
 
 class TicketAnalytics(Base):
+    """
+    One row per ticket, tracking the timestamps analytics needs:
+    when it was created, when it first got a response (engineer
+    assigned or first admin comment), and when it was resolved.
+    """
     __tablename__ = "ticket_analytics"
 
     ticket_id = Column(Integer, ForeignKey("tickets.id"), primary_key=True, index=True)

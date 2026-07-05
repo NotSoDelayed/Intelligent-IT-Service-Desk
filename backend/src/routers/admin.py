@@ -7,9 +7,9 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from activity_log import log_activity
-from auth import get_current_admin
+from auth import MockUser, get_current_admin
 from database import get_db
-from models import Ticket, TicketStatus, User
+from models import Ticket, TicketStatus
 from schemas import DashboardStats, TicketListOut, TicketOut
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/admin", tags=["Admin"])
 
 @router.get("/dashboard", response_model=DashboardStats)
 def dashboard_stats(
-    current_admin: User = Depends(get_current_admin),
+    current_admin: MockUser = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
     tickets = db.query(Ticket).all()
@@ -101,7 +101,7 @@ def dashboard_stats(
 # ------------------------------------------------------------------
 @router.get("/tickets/flagged", response_model=list[TicketListOut])
 def list_flagged_tickets(
-    current_admin: User = Depends(get_current_admin),
+    current_admin: MockUser = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
     return (
@@ -119,7 +119,7 @@ def list_flagged_tickets(
 @router.post("/tickets/{ticket_no}/approve", response_model=TicketOut)
 def approve_flagged_ticket(
     ticket_no: str,
-    current_admin: User = Depends(get_current_admin),
+    current_admin: MockUser = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
     ticket = db.query(Ticket).filter(Ticket.ticket_no == ticket_no).first()
@@ -141,7 +141,7 @@ def approve_flagged_ticket(
 
 @router.get("/tickets/export")
 def export_tickets_csv(
-    current_admin: User = Depends(get_current_admin),
+    current_admin: MockUser = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
     """

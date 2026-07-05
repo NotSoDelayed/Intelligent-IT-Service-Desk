@@ -4,9 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status, Background
 from sqlalchemy.orm import Session
 
 from activity_log import log_activity
+from auth import MockUser, get_current_user
 from classifier import check_duplicate, classify_ticket, compute_sla, is_probable_spam
 from database import get_db, SessionLocal
-from models import Severity, Ticket, TicketComment, TicketStatus, TicketAnalytics
+from models import Severity, Ticket, TicketAnalytics, TicketComment, TicketStatus
 from schemas import (
     CommentCreate,
     CommentOut,
@@ -138,17 +139,19 @@ def background_reanalyze_ticket(ticket_no: str):
 
 
 # ------------------------------------------------------------------
-# POST /tickets  -- PUBLIC, no login required
+# POST /tickets  -- requires being "logged in" (X-Username header)
 # ------------------------------------------------------------------
 @router.post("", response_model=TicketOut, status_code=status.HTTP_201_CREATED)
 def create_ticket(
     payload: TicketCreate,
     background_tasks: BackgroundTasks,
+    current_user: MockUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
-    Anyone can submit a ticket -- no account or login needed.
-    AI classification and SLA calculation run automatically.
+    Files a ticket as whoever is logged in (their username/full name come
+    from the X-Username / X-Full-Name headers set at login, not this
+    form). AI classification and SLA calculation run automatically.
     Returns the ticket_no so the user can track progress later.
     """
     created_on = datetime.utcnow()
@@ -157,9 +160,8 @@ def create_ticket(
         title=payload.title,
         content=payload.content,
         status=TicketStatus.open,
-        author=payload.name,
-        author_username=payload.username,
-        author_id=None,
+        author=current_user.full_name,
+        author_username=current_user.username,
         created_on=created_on,
         user_priority=payload.user_priority,
         severity=Severity.medium,
@@ -170,6 +172,7 @@ def create_ticket(
 
     analytics = TicketAnalytics(ticket_id=ticket.id)
     db.add(analytics)
+    db.commit()
 
     log_activity(
         db, ticket, "System",
@@ -177,7 +180,9 @@ def create_ticket(
     )
     db.commit()
 
-    background_tasks.add_task(background_process_ticket_creation, ticket.ticket_no, payload.username)
+    background_tasks.add_task(
+        background_process_ticket_creation, ticket.ticket_no, current_user.username
+    )
 
     return ticket
 
@@ -199,7 +204,7 @@ def list_tickets(
     search: str | None = Query(None, description="Search by title or ticket no."),
     page: int = Query(1, ge=1, description="Page number, starts at 1"),
     limit: int = Query(20, ge=1, le=100, description="Tickets per page, max 100"),
-    # # current_admin: User = Depends(get_current_admin),
+    # # current_admin: MockUser = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
     q = db.query(Ticket)
@@ -267,7 +272,7 @@ def get_ticket(
 def update_ticket(
     ticket_no: str,
     payload: TicketUpdateAdmin,
-    # current_admin: User = Depends(get_current_admin),
+    # current_admin: MockUser = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
     ticket = db.query(Ticket).filter(Ticket.ticket_no == ticket_no).first()
@@ -282,12 +287,12 @@ def update_ticket(
         ticket.status = TicketStatus(payload.status)
         if ticket.status == TicketStatus.in_progress and not ticket.ticket_start_date:
             ticket.ticket_start_date = datetime.utcnow()
-        if ticket.status == TicketStatus.resolved:
-            if ticket.analytics and not ticket.analytics.resolved_at:
-                ticket.analytics.resolved_at = datetime.utcnow()
         if ticket.status == TicketStatus.closed:
             ticket.ticket_closed_date = datetime.utcnow()
             ticket.closed_ticket = "Admin"
+        if ticket.status == TicketStatus.resolved:
+            if ticket.analytics and not ticket.analytics.resolved_at:
+                ticket.analytics.resolved_at = datetime.utcnow()
         changes.append(f"status: {old} -> {ticket.status.value}")
 
     if payload.severity and payload.severity != ticket.severity.value:
@@ -300,8 +305,8 @@ def update_ticket(
         if new_eng != ticket.assigned_engineer:
             ticket.assigned_engineer = new_eng
             changes.append(f"assigned engineer: {new_eng or 'Unassigned'}")
-            if new_eng and ticket.analytics and not ticket.analytics.first_responded_at:
-                ticket.analytics.first_responded_at = datetime.utcnow()
+        if new_eng and ticket.analytics and not ticket.analytics.first_responded_at:
+            ticket.analytics.first_responded_at = datetime.utcnow()
 
     if payload.category:
         ticket.category = payload.category
@@ -342,7 +347,7 @@ def update_ticket(
 @router.delete("/{ticket_no}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_ticket(
     ticket_no: str,
-    # current_admin: User = Depends(get_current_admin),
+    # current_admin: MockUser = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
     ticket = db.query(Ticket).filter(Ticket.ticket_no == ticket_no).first()
@@ -359,7 +364,7 @@ def delete_ticket(
 def reanalyze_ticket(
     ticket_no: str,
     background_tasks: BackgroundTasks,
-    # current_admin: User = Depends(get_current_admin),
+    # current_admin: MockUser = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
     ticket = db.query(Ticket).filter(Ticket.ticket_no == ticket_no).first()
@@ -392,12 +397,15 @@ def reanalyze_ticket(
 def add_comment(
     ticket_no: str,
     payload: CommentCreate,
-    # current_admin: User = Depends(get_current_admin),
+    # current_admin: MockUser = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
     ticket = db.query(Ticket).filter(Ticket.ticket_no == ticket_no).first()
     if not ticket:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket not found")
+
+    if ticket.analytics and not ticket.analytics.first_responded_at:
+        ticket.analytics.first_responded_at = datetime.utcnow()
 
     comment = TicketComment(
         ticket_id=ticket.id,
@@ -406,10 +414,6 @@ def add_comment(
         is_system=0,
     )
     db.add(comment)
-
-    if ticket.analytics and not ticket.analytics.first_responded_at:
-        ticket.analytics.first_responded_at = datetime.utcnow()
-
     db.commit()
     db.refresh(comment)
     return comment
@@ -418,7 +422,7 @@ def add_comment(
 @router.get("/{ticket_no}/comments", response_model=list[CommentOut])
 def list_comments(
     ticket_no: str,
-    # current_admin: User = Depends(get_current_admin),
+    # current_admin: MockUser = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
     ticket = db.query(Ticket).filter(Ticket.ticket_no == ticket_no).first()

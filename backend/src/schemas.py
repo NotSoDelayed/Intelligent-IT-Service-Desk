@@ -1,51 +1,33 @@
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
-# ---------- Auth / Users ----------
+# ---------- Mock Auth ----------
+# No registration, no password, no token. Role/team are derived purely
+# from the username string on the backend (see auth.py).
 
-class UserRegister(BaseModel):
+class LoginRequest(BaseModel):
+    username: str = Field(..., min_length=2, max_length=150)
     full_name: str = Field(..., min_length=2, max_length=150)
-    email: EmailStr
-    password: str = Field(..., min_length=6)
-    department: str = Field(..., description="Company or department name")
 
 
-class UserLogin(BaseModel):
-    email: EmailStr
-    password: str
-
-
-class UserOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
+class LoginResponse(BaseModel):
+    username: str
     full_name: str
-    email: EmailStr
-    role: str
-    department: str | None = None
-    created_at: datetime
-
-
-class Token(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-    user: UserOut
+    role: Literal["user", "admin", "engineer"]
+    team: str | None = None
 
 
 # ---------- Tickets ----------
 
 class TicketCreate(BaseModel):
     """
-    What anyone submits when filing a new ticket -- no account needed.
-    Only a display name and a username identify the submitter; tickets
-    are tracked afterwards via their ticket number.
+    What a logged-in user submits when filing a new ticket. Their name
+    and username are already known from login (X-Username/X-Full-Name
+    headers) -- this form only needs the actual issue details.
     """
-    name: str = Field(..., min_length=2, max_length=150)
-    username: str = Field(..., min_length=2, max_length=150)
-
     title: str = Field(..., min_length=4, max_length=255)
     content: str = Field(..., min_length=10)
     user_priority: int = Field(default=3, ge=1, le=5)
@@ -206,6 +188,8 @@ class DashboardStats(BaseModel):
     sla_breached: int
     sla_compliance_rate: float | None = None
 
+
+# ---------- Analytics ----------
 
 class AnalyticsSummary(BaseModel):
     total_created: int
