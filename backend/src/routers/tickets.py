@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status, Background
 from sqlalchemy.orm import Session
 
 from activity_log import log_activity
-from classifier import check_duplicate, classify_ticket, compute_sla
+from classifier import check_duplicate, classify_ticket, compute_sla, is_probable_spam
 from database import get_db, SessionLocal
 from models import Severity, Ticket, TicketComment, TicketStatus
 from schemas import (
@@ -19,7 +19,7 @@ from schemas import (
 router = APIRouter(prefix="/tickets", tags=["Tickets"])
 
 
-def background_process_ticket_creation(ticket_no: str, email: str):
+def background_process_ticket_creation(ticket_no: str, username: str):
     with SessionLocal() as db:
         ticket = db.query(Ticket).filter(Ticket.ticket_no == ticket_no).first()
         if not ticket:
@@ -28,13 +28,12 @@ def background_process_ticket_creation(ticket_no: str, email: str):
         result = classify_ticket(
             ticket.title,
             ticket.content,
-            ticket.technology_app_item,
             ticket.user_priority or 3,
         )
         sla = compute_sla(result.priority, result.difficulty, ticket.created_on)
 
         open_tickets = db.query(Ticket).filter(
-            Ticket.author_email == email,
+            Ticket.author_username == username,
             Ticket.status.in_(["Open", "In Progress", "Pending User"]),
             Ticket.ticket_no != ticket_no
         ).all()
@@ -50,12 +49,17 @@ def background_process_ticket_creation(ticket_no: str, email: str):
             f"Please check before proceeding."
             if duplicate_match else None
         )
+        spam_flagged = is_probable_spam(ticket.title, ticket.content)
 
         ticket.severity = Severity(result.suggested_severity) if result.suggested_severity in Severity._value2member_map_ else Severity.medium
         ticket.category = result.category
         ticket.priority = result.priority
         ticket.difficulty = result.difficulty
-        ticket.assigned_team = result.assigned_team
+
+        # Self-service (P4 + Easy) tickets don't need to be routed to a team.
+        is_self_service = result.priority == "P4" and result.difficulty == "Easy"
+        ticket.assigned_team = None if is_self_service else result.assigned_team
+
         ticket.ai_recommended_steps = result.recommended_steps
         ticket.ai_confidence = result.confidence
         ticket.ai_summary = result.summary
@@ -65,21 +69,33 @@ def background_process_ticket_creation(ticket_no: str, email: str):
         ticket.due_by = sla["due_by"]
         ticket.duplicate_warning = duplicate_warning
 
+        # Duplicates or likely-spam submissions get held for admin review
+        # instead of dropping straight into the live queue.
+        if duplicate_match or spam_flagged:
+            ticket.status = TicketStatus.flagged
+
         hours = round(sla["sla_minutes"] / 60, 1)
         log_activity(
             db, ticket, "AI System",
             f"Ticket auto-classified as {result.category} / {result.priority} / "
-            f"{result.difficulty} difficulty, routed to {result.assigned_team}. "
-            f"User urgency: {ticket.user_priority}/5. "
+            f"{result.difficulty} difficulty"
+            + ("" if is_self_service else f", routed to {result.assigned_team}")
+            + f". User urgency: {ticket.user_priority}/5. "
             f"Target resolution: {hours}h by {sla['due_by'].strftime('%b %d, %H:%M UTC')} "
             f"(confidence {result.confidence}%).",
         )
 
-        if duplicate_warning:
+        if duplicate_match:
             log_activity(
                 db, ticket, "AI System",
                 f"Possible duplicate detected: {duplicate_match['ticket_no']} -- "
-                f"admin should review and merge if needed.",
+                f"ticket flagged for admin review/merge.",
+            )
+
+        if spam_flagged:
+            log_activity(
+                db, ticket, "AI System",
+                "Submission looked like spam/low-quality content -- flagged for admin review.",
             )
 
         db.commit()
@@ -94,15 +110,16 @@ def background_reanalyze_ticket(ticket_no: str):
         result = classify_ticket(
             ticket.title,
             ticket.content,
-            ticket.technology_app_item,
             ticket.user_priority or 3,
         )
         sla = compute_sla(result.priority, result.difficulty, ticket.created_on)
 
+        is_self_service = result.priority == "P4" and result.difficulty == "Easy"
+
         ticket.category = result.category
         ticket.priority = result.priority
         ticket.difficulty = result.difficulty
-        ticket.assigned_team = result.assigned_team
+        ticket.assigned_team = None if is_self_service else result.assigned_team
         ticket.ai_recommended_steps = result.recommended_steps
         ticket.ai_confidence = result.confidence
         ticket.ai_summary = result.summary
@@ -112,8 +129,9 @@ def background_reanalyze_ticket(ticket_no: str):
         hours = round(sla["sla_minutes"] / 60, 1)
         log_activity(
             db, ticket, "AI System",
-            f"Re-analyzed: {result.category} / {result.priority} / {result.difficulty} difficulty, "
-            f"routed to {result.assigned_team}. Target resolution: {hours}h "
+            f"Re-analyzed: {result.category} / {result.priority} / {result.difficulty} difficulty"
+            + ("" if is_self_service else f", routed to {result.assigned_team}")
+            + f". Target resolution: {hours}h "
             f"by {sla['due_by'].strftime('%b %d, %H:%M UTC')} (confidence {result.confidence}%).",
         )
         db.commit()
@@ -140,11 +158,9 @@ def create_ticket(
         content=payload.content,
         status=TicketStatus.open,
         author=payload.name,
-        author_email=payload.email,
+        author_username=payload.username,
         author_id=None,
-        department=payload.department,
         created_on=created_on,
-        technology_app_item=payload.technology_app_item,
         user_priority=payload.user_priority,
         severity=Severity.medium,
     )
@@ -158,7 +174,7 @@ def create_ticket(
     )
     db.commit()
 
-    background_tasks.add_task(background_process_ticket_creation, ticket.ticket_no, payload.email)
+    background_tasks.add_task(background_process_ticket_creation, ticket.ticket_no, payload.username)
 
     return ticket
 
@@ -166,6 +182,8 @@ def create_ticket(
 # ------------------------------------------------------------------
 # GET /tickets  -- ADMIN only, paginated
 # ?page=1&limit=20 (default: page 1, 20 per page)
+# Flagged tickets are excluded from the default queue unless explicitly
+# requested via ?status=Flagged (see /admin/tickets/flagged for that view).
 # ------------------------------------------------------------------
 @router.get("", response_model=TicketPageOut)
 def list_tickets(
@@ -185,6 +203,10 @@ def list_tickets(
 
     if status_filter:
         q = q.filter(Ticket.status == status_filter)
+    else:
+        # Flagged tickets need admin review before they join the live queue.
+        q = q.filter(Ticket.status != TicketStatus.flagged)
+
     if severity_filter:
         q = q.filter(Ticket.severity == severity_filter)
     if category_filter:

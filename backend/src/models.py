@@ -25,6 +25,7 @@ class TicketStatus(str, enum.Enum):
     pending_user = "Pending User"
     resolved = "Resolved"
     closed = "Closed"
+    flagged = "Flagged"
 
 
 class Severity(str, enum.Enum):
@@ -60,12 +61,10 @@ class Ticket(Base):
     content = Column(Text, nullable=False)
     status = Column(Enum(TicketStatus), default=TicketStatus.open, nullable=False)
     author = Column(String(150), nullable=False)
-    author_email = Column(String(150), nullable=False)
-    department = Column(String(150), nullable=False)
+    author_username = Column(String(150), nullable=False)
     created_on = Column(DateTime, default=datetime.utcnow, nullable=False)
     ticket_start_date = Column(DateTime, nullable=True)
     ticket_closed_date = Column(DateTime, nullable=True)
-    technology_app_item = Column(String(150), nullable=False)
     severity = Column(Enum(Severity), nullable=False)
     assigned_engineer = Column(String(150), nullable=True)
     closed_ticket = Column(String(150), nullable=True)
@@ -110,6 +109,11 @@ class Ticket(Base):
         """On Track / At Risk / Overdue / Met / Breached."""
         from classifier import sla_status as compute_status
         return compute_status(self.status.value, self.due_by, self.ticket_closed_date)
+
+    @property
+    def is_self_service(self) -> bool:
+        """True when the ticket qualifies as self-service (P4 + Easy) -- no team assignment needed."""
+        return self.priority == "P4" and self.difficulty == "Easy"
 
 
 class TicketComment(Base):

@@ -40,27 +40,20 @@ class Token(BaseModel):
 class TicketCreate(BaseModel):
     """
     What anyone submits when filing a new ticket -- no account needed.
-    Submitter info (name, email, department) is collected directly on
-    the form since users do not have login accounts.
+    Only a display name and a username identify the submitter; tickets
+    are tracked afterwards via their ticket number.
     """
-    name: str = Field(..., min_length=2, max_length=150, description="Your full name")
-    email: EmailStr = Field(..., description="Your email address")
-    department: str = Field(..., description="Your department e.g. Finance Dept")
+    name: str = Field(..., min_length=2, max_length=150)
+    username: str = Field(..., min_length=2, max_length=150)
 
     title: str = Field(..., min_length=4, max_length=255)
-    content: str = Field(..., min_length=10, description="Detailed description of the issue")
-    technology_app_item: str = Field(..., description="e.g. VPN, Outlook, Laptop, ERP System")
-    user_priority: int = Field(
-        default=3,
-        ge=1,
-        le=5,
-        description="Your urgency level: 1 = not urgent, 5 = critical / cannot work",
-    )
+    content: str = Field(..., min_length=10)
+    user_priority: int = Field(default=3, ge=1, le=5)
 
 
 class TicketUpdateAdmin(BaseModel):
     """Fields an admin/engineer is allowed to change."""
-    status: Literal["Open", "In Progress", "Pending User", "Resolved", "Closed"] | None = None
+    status: Literal["Open", "In Progress", "Pending User", "Resolved", "Closed", "Flagged"] | None = None
     severity: Literal["Low", "Medium", "High", "Urgent"] | None = None
     assigned_engineer: str | None = None
     category: Literal[
@@ -100,13 +93,11 @@ class TicketOut(BaseModel):
     content: str
     status: str
     author: str
-    author_email: str
+    author_username: str
     age: int
-    department: str
     created_on: datetime
     ticket_start_date: datetime | None = None
     ticket_closed_date: datetime | None = None
-    technology_app_item: str
     severity: str
     assigned_engineer: str | None = None
     closed_ticket: str | None = None
@@ -126,6 +117,10 @@ class TicketOut(BaseModel):
     # AI self-help (only populated when difficulty is Easy)
     user_self_help_steps: list[str] | None = None
     self_help_note: str | None = None
+
+    # True when priority is P4 and difficulty is Easy -- tells the frontend
+    # this ticket is self-service and won't be routed to a team.
+    is_self_service: bool = False
 
     # SLA
     sla_minutes: int | None = None
@@ -149,14 +144,14 @@ class TicketListOut(BaseModel):
     difficulty: str | None = None
     assigned_team: str | None = None
     assigned_engineer: str | None = None
-    department: str
     author: str
-    author_email: str
+    author_username: str
     age: int
     created_on: datetime
     due_by: datetime | None = None
     sla_status: str | None = None
     user_priority: int | None = None
+    is_self_service: bool = False
 
 
 class TicketPageOut(BaseModel):
@@ -197,6 +192,7 @@ class DashboardStats(BaseModel):
     open_tickets: int
     in_progress_tickets: int
     closed_tickets: int
+    flagged_tickets: int
     by_severity: dict
     by_category: dict
     by_team: dict

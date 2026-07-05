@@ -48,9 +48,9 @@ class ClassificationResult:
 
 
 SYSTEM_PROMPT = """You are an IT service desk triage assistant. Given a support \
-ticket's title, description, affected technology/app/item, and the user's \
-self-reported urgency (1=low, 5=critical), classify the ticket so the desk \
-can route and schedule it correctly.
+ticket's title, description, and the user's self-reported urgency (1=low, \
+5=critical), classify the ticket so the desk can route and schedule it \
+correctly.
 
 The user urgency rating is ONE input -- use your judgment. If the description \
 doesn't match the rating (e.g. user says 5 but issue is trivial, or user says 1 \
@@ -91,7 +91,7 @@ def _get_gemini_client():
     )
 
 
-def _call_gemini(title: str, content: str, tech_item: str, user_priority: int = 3) -> dict | None:
+def _call_gemini(title: str, content: str, user_priority: int = 3) -> dict | None:
     if not settings.GEMINI_API_KEY:
         return None
 
@@ -107,7 +107,6 @@ def _call_gemini(title: str, content: str, tech_item: str, user_priority: int = 
 
     user_prompt = (
         f"Title: {title}\n"
-        f"Technology/App/Item: {tech_item}\n"
         f"User-reported urgency: {urgency_label}\n"
         f"Description: {content}\n\n"
         "Classify this ticket now."
@@ -168,9 +167,9 @@ SELF_HELP_MAP = {
 }
 
 
-def _rule_based_classify(title: str, content: str, tech_item: str, user_priority: int = 3) -> dict:
+def _rule_based_classify(title: str, content: str, user_priority: int = 3) -> dict:
     """Deterministic keyword fallback so the platform works without an API key."""
-    text = f"{title} {content} {tech_item}".lower()
+    text = f"{title} {content}".lower()
 
     keyword_map = [
         ("Security", ["phishing", "malware", "virus", "breach", "hacked", "suspicious login",
@@ -288,7 +287,6 @@ def _rule_based_classify(title: str, content: str, tech_item: str, user_priority
 def classify_ticket(
     title: str,
     content: str,
-    tech_item: str,
     user_priority: int = 3,
 ) -> ClassificationResult:
     """
@@ -301,9 +299,9 @@ def classify_ticket(
     self-service step while the engineer is being paged. Medium and Hard
     tickets never get self-help -- too complex for the user to attempt.
     """
-    ai_result = _call_gemini(title, content, tech_item, user_priority)
+    ai_result = _call_gemini(title, content, user_priority)
     data = ai_result if ai_result else _rule_based_classify(
-        title, content, tech_item, user_priority
+        title, content, user_priority
     )
 
     category = data.get("category") if data.get("category") in CATEGORIES else "Other"
@@ -328,6 +326,31 @@ def classify_ticket(
         confidence=int(data.get("confidence", 60)),
         summary=data.get("summary", "")[:500],
     )
+
+
+# ============================================================
+# Spam heuristic (used to route obvious junk into Flagged)
+# ============================================================
+def is_probable_spam(title: str, content: str) -> bool:
+    """
+    Lightweight, dependency-free spam filter. Not meant to be clever --
+    just catches obviously junk submissions (empty-ish, mostly non-letter
+    characters, or a single character repeated) so they land in the
+    Flagged queue for admin review instead of the live queue.
+    """
+    text = f"{title} {content}".strip()
+    if not text:
+        return True
+
+    letters = sum(ch.isalpha() for ch in text)
+    if letters / max(len(text), 1) < 0.3:
+        return True
+
+    compact = text.lower().replace(" ", "")
+    if len(compact) > 5 and len(set(compact)) <= 2:
+        return True
+
+    return False
 
 
 # ============================================================

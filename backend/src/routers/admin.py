@@ -2,14 +2,15 @@ import csv
 import io
 from datetime import datetime
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
+from activity_log import log_activity
 from auth import get_current_admin
 from database import get_db
 from models import Ticket, TicketStatus, User
-from schemas import DashboardStats
+from schemas import DashboardStats, TicketListOut, TicketOut
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -23,7 +24,7 @@ def dashboard_stats(
     total = len(tickets)
 
     by_severity, by_category, by_team, by_difficulty = {}, {}, {}, {}
-    open_count = in_progress_count = closed_count = today_count = 0
+    open_count = in_progress_count = closed_count = flagged_count = today_count = 0
     resolution_days = []
     sla_on_track = sla_at_risk = sla_overdue = sla_met = sla_breached = 0
 
@@ -48,6 +49,8 @@ def dashboard_stats(
                 resolution_days.append(
                     (t.ticket_closed_date - t.created_on).total_seconds() / 86400
                 )
+        elif t.status == TicketStatus.flagged:
+            flagged_count += 1
 
         if t.created_on.date() == today:
             today_count += 1
@@ -75,6 +78,7 @@ def dashboard_stats(
         open_tickets=open_count,
         in_progress_tickets=in_progress_count,
         closed_tickets=closed_count,
+        flagged_tickets=flagged_count,
         by_severity=by_severity,
         by_category=by_category,
         by_team=by_team,
@@ -90,6 +94,51 @@ def dashboard_stats(
     )
 
 
+# ------------------------------------------------------------------
+# GET /admin/tickets/flagged  -- ADMIN only
+# Tickets held back from the live queue (likely duplicates or spam)
+# pending manual review.
+# ------------------------------------------------------------------
+@router.get("/tickets/flagged", response_model=list[TicketListOut])
+def list_flagged_tickets(
+    current_admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    return (
+        db.query(Ticket)
+        .filter(Ticket.status == TicketStatus.flagged)
+        .order_by(Ticket.created_on.desc())
+        .all()
+    )
+
+
+# ------------------------------------------------------------------
+# POST /admin/tickets/{ticket_no}/approve  -- ADMIN only
+# Moves a Flagged ticket back into the live queue as Open.
+# ------------------------------------------------------------------
+@router.post("/tickets/{ticket_no}/approve", response_model=TicketOut)
+def approve_flagged_ticket(
+    ticket_no: str,
+    current_admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    ticket = db.query(Ticket).filter(Ticket.ticket_no == ticket_no).first()
+    if not ticket:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket not found")
+
+    if ticket.status != TicketStatus.flagged:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ticket is not currently flagged")
+
+    ticket.status = TicketStatus.open
+    log_activity(
+        db, ticket, "Admin",
+        "Ticket approved after review and moved back into the live queue.",
+    )
+    db.commit()
+    db.refresh(ticket)
+    return ticket
+
+
 @router.get("/tickets/export")
 def export_tickets_csv(
     current_admin: User = Depends(get_current_admin),
@@ -97,11 +146,11 @@ def export_tickets_csv(
 ):
     """
     Export all tickets as a downloadable CSV file.
-    Columns match the required dataset schema exactly:
-    Ticket No., Title, Content, Status, Author, Age, Department,
-    Created On, Ticket Start Date, Ticket Closed Date,
-    Technology/App/Item, Severity, Assigned Engineer, Closed Ticket,
-    plus AI-generated fields (Category, Priority, Difficulty, Assigned Team).
+    Columns match the required dataset schema:
+    Ticket No., Title, Content, Status, Author, Author Username, Age,
+    Created On, Ticket Start Date, Ticket Closed Date, Severity,
+    Assigned Engineer, Closed Ticket, plus AI-generated fields
+    (Category, Priority, Difficulty, Assigned Team).
     """
     tickets = db.query(Ticket).order_by(Ticket.created_on.desc()).all()
 
@@ -115,13 +164,11 @@ def export_tickets_csv(
         "Content",
         "Status",
         "Author",
-        "Author Email",
+        "Author Username",
         "Age",
-        "Department",
         "Created On",
         "Ticket Start Date",
         "Ticket Closed Date",
-        "Technology/App/Item",
         "Severity",
         "Assigned Engineer",
         "Closed Ticket",
@@ -145,13 +192,11 @@ def export_tickets_csv(
             t.content,
             t.status.value,
             t.author,
-            t.author_email,
+            t.author_username,
             t.age,
-            t.department,
             fmt(t.created_on),
             fmt(t.ticket_start_date),
             fmt(t.ticket_closed_date),
-            t.technology_app_item,
             t.severity.value,
             t.assigned_engineer or "",
             t.closed_ticket or "",
