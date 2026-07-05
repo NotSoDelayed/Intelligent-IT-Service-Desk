@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status, Background
 from sqlalchemy.orm import Session
 
 from activity_log import log_activity
-from auth import MockUser, get_current_user
+from auth import MockUser, Role, get_current_staff, get_current_user
 from classifier import check_duplicate, classify_ticket, compute_sla, is_probable_spam
 from database import get_db, SessionLocal
 from models import Severity, Ticket, TicketAnalytics, TicketComment, TicketStatus
@@ -188,10 +188,11 @@ def create_ticket(
 
 
 # ------------------------------------------------------------------
-# GET /tickets  -- ADMIN only, paginated
+# GET /tickets  -- ADMIN or ENGINEER
 # ?page=1&limit=20 (default: page 1, 20 per page)
-# Flagged tickets are excluded from the default queue unless explicitly
-# requested via ?status=Flagged (see /admin/tickets/flagged for that view).
+# Admins see the full queue (minus Flagged, unless explicitly requested).
+# Engineers are auto-scoped to their own team's tickets and never see
+# Flagged (that review queue is admin-only -- see /admin/tickets/flagged).
 # ------------------------------------------------------------------
 @router.get("", response_model=TicketPageOut)
 def list_tickets(
@@ -204,16 +205,26 @@ def list_tickets(
     search: str | None = Query(None, description="Search by title or ticket no."),
     page: int = Query(1, ge=1, description="Page number, starts at 1"),
     limit: int = Query(20, ge=1, le=100, description="Tickets per page, max 100"),
-    # # current_admin: MockUser = Depends(get_current_admin),
+    current_user: MockUser = Depends(get_current_staff),
     db: Session = Depends(get_db),
 ):
     q = db.query(Ticket)
 
-    if status_filter:
-        q = q.filter(Ticket.status == status_filter)
+    if current_user.role == Role.engineer:
+        # Ignore any assigned_team query param -- engineers only ever see
+        # their own team's queue, and Flagged tickets are always excluded.
+        q = q.filter(Ticket.assigned_team == current_user.team)
+        if status_filter and status_filter != TicketStatus.flagged.value:
+            q = q.filter(Ticket.status == status_filter)
+        else:
+            q = q.filter(Ticket.status != TicketStatus.flagged)
     else:
-        # Flagged tickets need admin review before they join the live queue.
-        q = q.filter(Ticket.status != TicketStatus.flagged)
+        if status_filter:
+            q = q.filter(Ticket.status == status_filter)
+        else:
+            q = q.filter(Ticket.status != TicketStatus.flagged)
+        if assigned_team:
+            q = q.filter(Ticket.assigned_team == assigned_team)
 
     if severity_filter:
         q = q.filter(Ticket.severity == severity_filter)
@@ -221,8 +232,6 @@ def list_tickets(
         q = q.filter(Ticket.category == category_filter)
     if priority_filter:
         q = q.filter(Ticket.priority == priority_filter)
-    if assigned_team:
-        q = q.filter(Ticket.assigned_team == assigned_team)
     if search:
         like = f"%{search}%"
         q = q.filter(
@@ -266,21 +275,45 @@ def get_ticket(
 
 
 # ------------------------------------------------------------------
-# PATCH /tickets/{ticket_no}  -- ADMIN only
+# PATCH /tickets/{ticket_no}  -- ADMIN or ENGINEER
+# Admins can change anything. Engineers can only update status (e.g.
+# mark a ticket Resolved once the user's issue is fixed) and claim/
+# release themselves via assigned_engineer, and only on tickets already
+# routed to their own team.
 # ------------------------------------------------------------------
 @router.patch("/{ticket_no}", response_model=TicketOut)
 def update_ticket(
     ticket_no: str,
     payload: TicketUpdateAdmin,
-    # current_admin: MockUser = Depends(get_current_admin),
+    current_user: MockUser = Depends(get_current_staff),
     db: Session = Depends(get_db),
 ):
     ticket = db.query(Ticket).filter(Ticket.ticket_no == ticket_no).first()
     if not ticket:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket not found")
 
-    changes = []
+    is_engineer = current_user.role == Role.engineer
     update_data = payload.model_dump(exclude_unset=True)
+
+    if is_engineer:
+        if ticket.assigned_team != current_user.team:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN, "This ticket isn't assigned to your team"
+            )
+
+        admin_only_fields = {"severity", "category", "priority", "difficulty", "assigned_team"}
+        if admin_only_fields & update_data.keys():
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "Engineers can only update status and assigned_engineer -- "
+                "severity, category, priority, difficulty, and team reassignment require an admin",
+            )
+        if payload.status == TicketStatus.flagged.value:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Only admins can flag a ticket")
+
+    actor_label = current_user.full_name
+
+    changes = []
 
     if payload.status and payload.status != ticket.status.value:
         old = ticket.status.value
@@ -289,7 +322,7 @@ def update_ticket(
             ticket.ticket_start_date = datetime.utcnow()
         if ticket.status == TicketStatus.closed:
             ticket.ticket_closed_date = datetime.utcnow()
-            ticket.closed_ticket = "Admin"
+            ticket.closed_ticket = actor_label
         if ticket.status == TicketStatus.resolved:
             if ticket.analytics and not ticket.analytics.resolved_at:
                 ticket.analytics.resolved_at = datetime.utcnow()
@@ -334,7 +367,7 @@ def update_ticket(
         changes.append(f"team: {ticket.assigned_team}")
 
     if changes:
-        log_activity(db, ticket, "Admin", "Updated " + "; ".join(changes))
+        log_activity(db, ticket, actor_label, "Updated " + "; ".join(changes))
 
     db.commit()
     db.refresh(ticket)
@@ -391,25 +424,29 @@ def reanalyze_ticket(
 
 
 # ------------------------------------------------------------------
-# POST/GET /tickets/{ticket_no}/comments  -- ADMIN only
+# POST/GET /tickets/{ticket_no}/comments  -- ADMIN or ENGINEER
+# Engineers can only comment/read on tickets assigned to their own team.
 # ------------------------------------------------------------------
 @router.post("/{ticket_no}/comments", response_model=CommentOut)
 def add_comment(
     ticket_no: str,
     payload: CommentCreate,
-    # current_admin: MockUser = Depends(get_current_admin),
+    current_user: MockUser = Depends(get_current_staff),
     db: Session = Depends(get_db),
 ):
     ticket = db.query(Ticket).filter(Ticket.ticket_no == ticket_no).first()
     if not ticket:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket not found")
 
+    if current_user.role == Role.engineer and ticket.assigned_team != current_user.team:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This ticket isn't assigned to your team")
+
     if ticket.analytics and not ticket.analytics.first_responded_at:
         ticket.analytics.first_responded_at = datetime.utcnow()
 
     comment = TicketComment(
         ticket_id=ticket.id,
-        author_name="Admin",
+        author_name=current_user.full_name,
         message=payload.message,
         is_system=0,
     )
@@ -422,12 +459,16 @@ def add_comment(
 @router.get("/{ticket_no}/comments", response_model=list[CommentOut])
 def list_comments(
     ticket_no: str,
-    # current_admin: MockUser = Depends(get_current_admin),
+    current_user: MockUser = Depends(get_current_staff),
     db: Session = Depends(get_db),
 ):
     ticket = db.query(Ticket).filter(Ticket.ticket_no == ticket_no).first()
     if not ticket:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket not found")
+
+    if current_user.role == Role.engineer and ticket.assigned_team != current_user.team:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This ticket isn't assigned to your team")
+
     return (
         db.query(TicketComment)
         .filter(TicketComment.ticket_id == ticket.id)
