@@ -112,6 +112,7 @@ class TicketOut(BaseModel):
     # True when priority is P4 and difficulty is Easy -- tells the frontend
     # this ticket is self-service and won't be routed to a team.
     is_self_service: bool = False
+    is_trending: bool = False
 
     # SLA
     sla_minutes: int | None = None
@@ -120,6 +121,9 @@ class TicketOut(BaseModel):
 
     # Duplicate detection (populated if a similar open ticket already exists)
     duplicate_warning: str | None = None
+
+    # Trend detection (populated if a spike in same-category tickets was found)
+    trend_warning: str | None = None
 
 
 class TicketListOut(BaseModel):
@@ -136,6 +140,7 @@ class TicketListOut(BaseModel):
     assigned_team: str | None = None
     assigned_engineer: str | None = None
     ai_confidence_level: str | None = None
+    is_trending: bool = False
     author: str
     author_username: str
     age: int
@@ -182,6 +187,7 @@ class TicketTrackOut(BaseModel):
 
     ai_summary: str | None = None
     duplicate_warning: str | None = None
+    trend_warning: str | None = None
 
     # self-help shown on tracking page too
     user_self_help_steps: list[str] | None = None

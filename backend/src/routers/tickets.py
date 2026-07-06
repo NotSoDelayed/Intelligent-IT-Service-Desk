@@ -1,11 +1,18 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status, BackgroundTasks
 from sqlalchemy.orm import Session
 
 from activity_log import log_activity
 from auth import MockUser, Role, get_current_staff, get_current_user
-from classifier import check_duplicate, classify_ticket, compute_sla, is_probable_spam
+from classifier import (
+    apply_trend_bump,
+    check_duplicate,
+    classify_ticket,
+    compute_sla,
+    is_probable_spam,
+    TREND_WINDOW_HOURS,
+)
 from database import get_db, SessionLocal
 from models import Severity, Ticket, TicketAnalytics, TicketComment, TicketStatus
 from schemas import (
@@ -33,7 +40,24 @@ def background_process_ticket_creation(ticket_no: str, username: str):
             ticket.content,
             ticket.user_priority or 3,
         )
-        sla = compute_sla(result.priority, result.difficulty, ticket.created_on)
+
+        # Trend check: how many OTHER tickets in this same category came in
+        # recently? A spike here is a signal no single ticket's classifier
+        # can see on its own -- it's the analytics layer feeding back into
+        # classification, not just per-ticket triage.
+        trend_window_start = datetime.utcnow() - timedelta(hours=TREND_WINDOW_HOURS)
+        similar_recent_count = db.query(Ticket).filter(
+            Ticket.category == result.category,
+            Ticket.created_on >= trend_window_start,
+            Ticket.id != ticket.id,
+        ).count()
+        trend = apply_trend_bump(
+            result.priority, result.suggested_severity, result.category, similar_recent_count
+        )
+        final_priority = trend["priority"]
+        final_severity = trend["severity"]
+
+        sla = compute_sla(final_priority, result.difficulty, ticket.created_on)
 
         open_tickets = db.query(Ticket).filter(
             Ticket.author_username == username,
@@ -54,13 +78,17 @@ def background_process_ticket_creation(ticket_no: str, username: str):
         )
         spam_flagged = is_probable_spam(ticket.title, ticket.content)
 
-        ticket.severity = Severity(result.suggested_severity) if result.suggested_severity in Severity._value2member_map_ else Severity.medium
+        ticket.severity = Severity(final_severity) if final_severity in Severity._value2member_map_ else Severity.medium
         ticket.category = result.category
-        ticket.priority = result.priority
+        ticket.priority = final_priority
         ticket.difficulty = result.difficulty
+        ticket.trend_warning = trend["trend_warning"]
 
         # Self-service (P4 + Easy) tickets don't need to be routed to a team.
-        is_self_service = result.priority == "P4" and result.difficulty == "Easy"
+        # Uses the final (possibly trend-bumped) priority -- if a ticket got
+        # escalated out of P4 because of a spike, it correctly stops
+        # qualifying as self-service and gets routed to a real team.
+        is_self_service = final_priority == "P4" and result.difficulty == "Easy"
         ticket.assigned_team = None if is_self_service else result.assigned_team
 
         ticket.ai_recommended_steps = result.recommended_steps
@@ -94,13 +122,16 @@ def background_process_ticket_creation(ticket_no: str, username: str):
         hours = round(sla["sla_minutes"] / 60, 1)
         log_activity(
             db, ticket, "AI System",
-            f"Ticket auto-classified as {result.category} / {result.priority} / "
+            f"Ticket auto-classified as {result.category} / {final_priority} / "
             f"{result.difficulty} difficulty"
             + ("" if is_self_service else f", routed to {result.assigned_team}")
             + f". User urgency: {ticket.user_priority}/5. "
             f"Target resolution: {hours}h by {sla['due_by'].strftime('%b %d, %H:%M UTC')} "
             f"(confidence: {ticket.ai_confidence_level}).",
         )
+
+        if trend["trend_warning"]:
+            log_activity(db, ticket, "AI System", trend["trend_warning"])
 
         if duplicate_match:
             log_activity(
@@ -129,14 +160,27 @@ def background_reanalyze_ticket(ticket_no: str):
             ticket.content,
             ticket.user_priority or 3,
         )
-        sla = compute_sla(result.priority, result.difficulty, ticket.created_on)
 
-        is_self_service = result.priority == "P4" and result.difficulty == "Easy"
+        trend_window_start = datetime.utcnow() - timedelta(hours=TREND_WINDOW_HOURS)
+        similar_recent_count = db.query(Ticket).filter(
+            Ticket.category == result.category,
+            Ticket.created_on >= trend_window_start,
+            Ticket.id != ticket.id,
+        ).count()
+        trend = apply_trend_bump(
+            result.priority, result.suggested_severity, result.category, similar_recent_count
+        )
+        final_priority = trend["priority"]
+
+        sla = compute_sla(final_priority, result.difficulty, ticket.created_on)
+
+        is_self_service = final_priority == "P4" and result.difficulty == "Easy"
         spam_flagged = is_probable_spam(ticket.title, ticket.content)
 
         ticket.category = result.category
-        ticket.priority = result.priority
+        ticket.priority = final_priority
         ticket.difficulty = result.difficulty
+        ticket.trend_warning = trend["trend_warning"]
         ticket.assigned_team = None if is_self_service else result.assigned_team
         ticket.ai_recommended_steps = result.recommended_steps
         ticket.ai_confidence = result.confidence
@@ -158,11 +202,13 @@ def background_reanalyze_ticket(ticket_no: str):
         hours = round(sla["sla_minutes"] / 60, 1)
         log_activity(
             db, ticket, "AI System",
-            f"Re-analyzed: {result.category} / {result.priority} / {result.difficulty} difficulty"
+            f"Re-analyzed: {result.category} / {final_priority} / {result.difficulty} difficulty"
             + ("" if is_self_service else f", routed to {result.assigned_team}")
             + f". Target resolution: {hours}h "
             f"by {sla['due_by'].strftime('%b %d, %H:%M UTC')} (confidence: {ticket.ai_confidence_level}).",
         )
+        if trend["trend_warning"]:
+            log_activity(db, ticket, "AI System", trend["trend_warning"])
         db.commit()
 
 
@@ -482,6 +528,7 @@ def reanalyze_ticket(
     ticket.ai_confidence = None
     ticket.ai_confidence_level = None
     ticket.ai_confidence_reason = None
+    ticket.trend_warning = None
     ticket.ai_summary = None
     ticket.sla_minutes = None
     ticket.due_by = None

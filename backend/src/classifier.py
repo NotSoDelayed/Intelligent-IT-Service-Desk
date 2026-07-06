@@ -52,6 +52,57 @@ class ClassificationResult:
         return asdict(self)
 
 
+# ============================================================
+# Trend-aware classification
+# ============================================================
+# If a spike of same-category tickets comes in within a short window,
+# that's a signal an individual ticket's classifier can never see on its
+# own (it only reads one ticket at a time) -- e.g. 10 separate "VPN"
+# tickets in an hour almost certainly means an outage, not 10 unrelated
+# problems. The router counts recent same-category tickets and passes
+# that count in here; this function decides whether to escalate.
+TREND_WINDOW_HOURS = 24
+TREND_THRESHOLD = 5  # this many same-category tickets in the window triggers a bump
+
+# Priority order from least to most urgent -- a bump moves one step
+# toward the front (more urgent), capped at P1.
+_PRIORITY_ORDER = ["P4", "P3", "P2", "P1"]
+_PRIORITY_TO_SEVERITY = {"P1": "Urgent", "P2": "High", "P3": "Medium", "P4": "Low"}
+
+
+def apply_trend_bump(priority: str, severity: str, category: str, similar_count: int) -> dict:
+    """
+    Given a ticket's already-decided priority/severity and how many other
+    same-category tickets showed up in the last TREND_WINDOW_HOURS,
+    returns the (possibly bumped) priority/severity plus a human-readable
+    trend_warning, or trend_warning=None if nothing unusual is happening.
+    """
+    if similar_count < TREND_THRESHOLD:
+        return {"priority": priority, "severity": severity, "trend_warning": None}
+
+    if priority in _PRIORITY_ORDER:
+        idx = _PRIORITY_ORDER.index(priority)
+        bumped_priority = _PRIORITY_ORDER[min(idx + 1, len(_PRIORITY_ORDER) - 1)]
+    else:
+        bumped_priority = priority
+
+    bumped_severity = _PRIORITY_TO_SEVERITY.get(bumped_priority, severity)
+    was_bumped = bumped_priority != priority
+
+    trend_warning = (
+        f"Possible outage pattern: {similar_count} similar {category} tickets were filed "
+        f"in the last {TREND_WINDOW_HOURS}h."
+    )
+    if was_bumped:
+        trend_warning += f" Priority raised from {priority} to {bumped_priority} as a precaution."
+
+    return {
+        "priority": bumped_priority,
+        "severity": bumped_severity,
+        "trend_warning": trend_warning,
+    }
+
+
 def confidence_bucket(score: int) -> str:
     """Converts a raw 0-100 confidence score into Low/Medium/High."""
     if score >= 75:

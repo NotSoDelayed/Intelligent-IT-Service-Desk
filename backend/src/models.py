@@ -74,6 +74,9 @@ class Ticket(Base):
     # --- Duplicate detection result ---
     duplicate_warning = Column(Text, nullable=True)  # set if a similar open ticket was found
 
+    # --- Trend detection result ---
+    trend_warning = Column(Text, nullable=True)  # set if a spike in same-category tickets was detected
+
     comments = relationship("TicketComment", back_populates="ticket", cascade="all, delete-orphan")
     analytics = relationship(
         "TicketAnalytics", back_populates="ticket", uselist=False, cascade="all, delete-orphan"
@@ -98,6 +101,11 @@ class Ticket(Base):
     def is_self_service(self) -> bool:
         """True when the ticket qualifies as self-service (P4 + Easy) -- no team assignment needed."""
         return self.priority == "P4" and self.difficulty == "Easy"
+
+    @property
+    def is_trending(self) -> bool:
+        """True when this ticket was caught up in a same-category spike (see trend_warning)."""
+        return bool(self.trend_warning)
 
 
 class TicketComment(Base):
