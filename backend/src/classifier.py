@@ -561,9 +561,9 @@ def _check_duplicate_keywords(
 # SLA / time-budget engine
 # ============================================================
 DIFFICULTY_BASE_MINUTES = {
-    "Easy": 60,
+    "Easy": 90,     # was 60 -- gives engineers more comfortable time even on quick tickets
     "Medium": 240,
-    "Hard": 1440,
+    "Hard": 960,    # was 1440 -- so the worst case (P4+Hard) caps at exactly 1 day
 }
 
 PRIORITY_MULTIPLIER = {
