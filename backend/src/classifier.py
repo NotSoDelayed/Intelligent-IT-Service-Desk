@@ -588,16 +588,32 @@ def compute_sla(priority: str, difficulty: str, created_on: datetime) -> dict:
     return {"sla_minutes": sla_minutes, "due_by": due_by}
 
 
-def sla_status(status: str, due_by: datetime | None, closed_on: datetime | None) -> str:
+def sla_status(
+    status: str,
+    due_by: datetime | None,
+    closed_on: datetime | None,
+    resolved_at: datetime | None = None,
+    sla_minutes: int | None = None,
+) -> str:
     """
     Human-readable SLA status used by the frontend to flag tickets that
     need attention before they breach their time budget.
+
+    Resolved and Closed are judged against the moment work actually
+    finished (resolved_at / closed_on respectively) -- not against
+    "right now" -- so a ticket resolved comfortably within SLA doesn't
+    silently drift into "Breached" just because an admin hasn't gotten
+    around to formally closing it yet.
     """
     if not due_by:
         return "Unscheduled"
 
-    if status in ("Resolved", "Closed"):
+    if status == "Closed":
         reference = closed_on or datetime.utcnow()
+        return "Met" if reference <= due_by else "Breached"
+
+    if status == "Resolved":
+        reference = resolved_at or datetime.utcnow()
         return "Met" if reference <= due_by else "Breached"
 
     now = datetime.utcnow()
@@ -605,4 +621,7 @@ def sla_status(status: str, due_by: datetime | None, closed_on: datetime | None)
         return "Overdue"
 
     remaining_seconds = (due_by - now).total_seconds()
-    return "At Risk" if remaining_seconds < 900 else "On Track"
+    # Scale the warning window to the ticket's own budget -- a flat 15
+    # minutes is meaningless on a 36h SLA but reasonable on a 24min one.
+    at_risk_window_seconds = max(900, (sla_minutes or 0) * 60 * 0.1)
+    return "At Risk" if remaining_seconds < at_risk_window_seconds else "On Track"

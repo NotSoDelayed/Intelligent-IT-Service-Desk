@@ -89,7 +89,10 @@ class Ticket(Base):
     def sla_status(self) -> str:
         """On Track / At Risk / Overdue / Met / Breached."""
         from classifier import sla_status as compute_status
-        return compute_status(self.status.value, self.due_by, self.ticket_closed_date)
+        resolved_at = self.analytics.resolved_at if self.analytics else None
+        return compute_status(
+            self.status.value, self.due_by, self.ticket_closed_date, resolved_at, self.sla_minutes
+        )
 
     @property
     def is_self_service(self) -> bool:
