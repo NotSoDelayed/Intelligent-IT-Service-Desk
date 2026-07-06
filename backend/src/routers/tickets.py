@@ -16,6 +16,7 @@ from schemas import (
     TicketPageOut,
     TicketTrackOut,
     TicketUpdateAdmin,
+    UserCompleteRequest,
 )
 
 router = APIRouter(prefix="/tickets", tags=["Tickets"])
@@ -298,6 +299,48 @@ def get_ticket(
     ticket = db.query(Ticket).filter(Ticket.ticket_no == ticket_no).first()
     if not ticket:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No ticket found with that ticket number")
+    return ticket
+
+
+# ------------------------------------------------------------------
+# POST /tickets/{ticket_no}/complete  -- PUBLIC (ticket owner only)
+# Self-service tickets only (priority P4 + difficulty Easy, i.e. no team
+# was ever assigned -- see Ticket.is_self_service). One click, no message
+# needed: the user tried the self-help steps and it worked. Moves the
+# ticket to Resolved; an admin closes it from there.
+# ------------------------------------------------------------------
+@router.post("/{ticket_no}/complete", response_model=TicketTrackOut)
+def mark_self_service_complete(
+    ticket_no: str,
+    payload: UserCompleteRequest,
+    db: Session = Depends(get_db),
+):
+    ticket = db.query(Ticket).filter(Ticket.ticket_no == ticket_no).first()
+    if not ticket:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket not found")
+
+    if ticket.author_username != payload.username:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This ticket doesn't belong to that username")
+
+    if not ticket.is_self_service:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "This action is only available for self-service (P4 + Easy) tickets",
+        )
+
+    if ticket.status in (TicketStatus.resolved, TicketStatus.closed):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Ticket is already {ticket.status.value}")
+
+    ticket.status = TicketStatus.resolved
+    if ticket.analytics and not ticket.analytics.resolved_at:
+        ticket.analytics.resolved_at = datetime.utcnow()
+
+    log_activity(
+        db, ticket, "User",
+        "User marked the ticket as complete after trying the self-help steps.",
+    )
+    db.commit()
+    db.refresh(ticket)
     return ticket
 
 

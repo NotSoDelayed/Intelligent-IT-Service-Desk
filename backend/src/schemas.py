@@ -52,6 +52,14 @@ class TicketUpdateAdmin(BaseModel):
     assigned_team: str | None = None
 
 
+class UserCompleteRequest(BaseModel):
+    """
+    Public 'Mark as Complete' button -- only usable on self-service
+    (P4 + Easy) tickets. Proves ownership with username, no login needed.
+    """
+    username: str = Field(..., min_length=2, max_length=150)
+
+
 class CommentCreate(BaseModel):
     message: str = Field(..., min_length=1)
 
