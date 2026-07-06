@@ -44,10 +44,21 @@ class ClassificationResult:
     user_self_help_steps: list[str] = field(default_factory=list)
     self_help_note: str = ""
     confidence: int = 60
+    confidence_level: str = "Medium"
+    confidence_reason: str = ""
     summary: str = ""
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+
+def confidence_bucket(score: int) -> str:
+    """Converts a raw 0-100 confidence score into Low/Medium/High."""
+    if score >= 75:
+        return "High"
+    if score >= 45:
+        return "Medium"
+    return "Low"
 
 
 SYSTEM_PROMPT = """You are an IT service desk triage assistant. Given a support \
@@ -74,7 +85,10 @@ Hard = deep troubleshooting, vendor escalation, or hardware replacement (~half a
 (populate this whenever difficulty is Easy, regardless of priority -- even urgent Easy tickets \
 benefit from a quick self-service first step. Return empty array [] only if difficulty is \
 Medium or Hard),
-  "confidence": integer 0-100,
+  "confidence": integer 0-100 -- how confident you are in this classification given the \
+information available,
+  "confidence_reason": one short sentence explaining WHY you gave that confidence score -- \
+e.g. what made the ticket clear or ambiguous. Write it for a non-technical reader.,
   "summary": one or two sentence neutral summary of the actual problem
 }
 """
@@ -274,6 +288,32 @@ def _rule_based_classify(title: str, content: str, user_priority: int = 3) -> di
         ],
     }
 
+    # Confidence varies with what was actually matched, instead of a flat
+    # guess -- a clean keyword hit + enough detail earns more trust than a
+    # ticket that fell through to defaults on every signal.
+    matched_category = category != "Other"
+    matched_urgency = any(w in text for w in urgent_words + high_words)
+    has_detail = len(content.strip()) >= 40
+
+    score = 35
+    reason_bits = []
+    if matched_category:
+        score += 25
+        reason_bits.append(f"clear keywords pointed to the {category} category")
+    else:
+        reason_bits.append("no strong category keywords were found, so this defaulted to Other")
+    if matched_urgency:
+        score += 15
+        reason_bits.append("urgency/impact language was present")
+    if has_detail:
+        score += 10
+        reason_bits.append("the description had enough detail to work with")
+    else:
+        reason_bits.append("the description was quite short on detail")
+    score = min(score, 90)  # rule-based fallback never claims full certainty
+
+    reason = "Rule-based fallback (no AI model used): " + "; ".join(reason_bits) + "."
+
     return {
         "category": category,
         "priority": priority,
@@ -282,7 +322,8 @@ def _rule_based_classify(title: str, content: str, user_priority: int = 3) -> di
         "assigned_team": TEAMS.get(category, "Service Desk Tier 1"),
         "recommended_steps": steps_map.get(category, steps_map["Other"]),
         "user_self_help_steps": user_self_help_steps,
-        "confidence": 55,
+        "confidence": score,
+        "confidence_reason": reason,
         "summary": (title.strip() or content.strip())[:200],
     }
 
@@ -317,6 +358,13 @@ def classify_ticket(
     user_self_help_steps = raw_self_help[:4] if is_self_help_eligible and raw_self_help else []
     self_help_note = SELF_HELP_NOTE if user_self_help_steps else ""
 
+    raw_confidence = int(data.get("confidence", 60))
+    level = confidence_bucket(raw_confidence)
+    reason = data.get("confidence_reason") or (
+        "The AI reported this confidence level based on how clear and specific "
+        "the ticket description was."
+    )
+
     return ClassificationResult(
         category=category,
         priority=priority,
@@ -326,7 +374,9 @@ def classify_ticket(
         recommended_steps=data.get("recommended_steps", [])[:6],
         user_self_help_steps=user_self_help_steps,
         self_help_note=self_help_note,
-        confidence=int(data.get("confidence", 60)),
+        confidence=raw_confidence,
+        confidence_level=level,
+        confidence_reason=reason,
         summary=data.get("summary", "")[:500],
     )
 

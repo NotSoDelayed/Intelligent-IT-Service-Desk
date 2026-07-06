@@ -14,6 +14,7 @@ from schemas import (
     TicketCreate,
     TicketOut,
     TicketPageOut,
+    TicketTrackOut,
     TicketUpdateAdmin,
 )
 
@@ -63,6 +64,20 @@ def background_process_ticket_creation(ticket_no: str, username: str):
 
         ticket.ai_recommended_steps = result.recommended_steps
         ticket.ai_confidence = result.confidence
+
+        if spam_flagged:
+            # Override whatever the classifier reported -- it has no idea
+            # the content looked like spam, so its confidence number can't
+            # be trusted here regardless of source (AI or rule-based).
+            ticket.ai_confidence_level = "Low"
+            ticket.ai_confidence_reason = (
+                "This submission looks like spam or very low-quality content, so the "
+                "classification above may not be meaningful."
+            )
+        else:
+            ticket.ai_confidence_level = result.confidence_level
+            ticket.ai_confidence_reason = result.confidence_reason
+
         ticket.ai_summary = result.summary
         ticket.user_self_help_steps = result.user_self_help_steps
         ticket.self_help_note = result.self_help_note
@@ -83,7 +98,7 @@ def background_process_ticket_creation(ticket_no: str, username: str):
             + ("" if is_self_service else f", routed to {result.assigned_team}")
             + f". User urgency: {ticket.user_priority}/5. "
             f"Target resolution: {hours}h by {sla['due_by'].strftime('%b %d, %H:%M UTC')} "
-            f"(confidence {result.confidence}%).",
+            f"(confidence: {ticket.ai_confidence_level}).",
         )
 
         if duplicate_match:
@@ -116,6 +131,7 @@ def background_reanalyze_ticket(ticket_no: str):
         sla = compute_sla(result.priority, result.difficulty, ticket.created_on)
 
         is_self_service = result.priority == "P4" and result.difficulty == "Easy"
+        spam_flagged = is_probable_spam(ticket.title, ticket.content)
 
         ticket.category = result.category
         ticket.priority = result.priority
@@ -123,6 +139,17 @@ def background_reanalyze_ticket(ticket_no: str):
         ticket.assigned_team = None if is_self_service else result.assigned_team
         ticket.ai_recommended_steps = result.recommended_steps
         ticket.ai_confidence = result.confidence
+
+        if spam_flagged:
+            ticket.ai_confidence_level = "Low"
+            ticket.ai_confidence_reason = (
+                "This submission looks like spam or very low-quality content, so the "
+                "classification above may not be meaningful."
+            )
+        else:
+            ticket.ai_confidence_level = result.confidence_level
+            ticket.ai_confidence_reason = result.confidence_reason
+
         ticket.ai_summary = result.summary
         ticket.sla_minutes = sla["sla_minutes"]
         ticket.due_by = sla["due_by"]
@@ -133,7 +160,7 @@ def background_reanalyze_ticket(ticket_no: str):
             f"Re-analyzed: {result.category} / {result.priority} / {result.difficulty} difficulty"
             + ("" if is_self_service else f", routed to {result.assigned_team}")
             + f". Target resolution: {hours}h "
-            f"by {sla['due_by'].strftime('%b %d, %H:%M UTC')} (confidence {result.confidence}%).",
+            f"by {sla['due_by'].strftime('%b %d, %H:%M UTC')} (confidence: {ticket.ai_confidence_level}).",
         )
         db.commit()
 
@@ -141,7 +168,7 @@ def background_reanalyze_ticket(ticket_no: str):
 # ------------------------------------------------------------------
 # POST /tickets  -- requires being "logged in" (X-Username header)
 # ------------------------------------------------------------------
-@router.post("", response_model=TicketOut, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=TicketTrackOut, status_code=status.HTTP_201_CREATED)
 def create_ticket(
     payload: TicketCreate,
     background_tasks: BackgroundTasks,
@@ -259,7 +286,7 @@ def list_tickets(
 # ------------------------------------------------------------------
 # GET /tickets/{ticket_no}  -- PUBLIC, no login required
 # ------------------------------------------------------------------
-@router.get("/{ticket_no}", response_model=TicketOut)
+@router.get("/{ticket_no}", response_model=TicketTrackOut)
 def get_ticket(
     ticket_no: str,
     db: Session = Depends(get_db),
@@ -410,6 +437,8 @@ def reanalyze_ticket(
     ticket.assigned_team = None
     ticket.ai_recommended_steps = None
     ticket.ai_confidence = None
+    ticket.ai_confidence_level = None
+    ticket.ai_confidence_reason = None
     ticket.ai_summary = None
     ticket.sla_minutes = None
     ticket.due_by = None
