@@ -320,9 +320,9 @@ function TicketDetailsContent({
           <CardContent className="space-y-4 text-sm p-6 pt-0">
             <DetailRow icon={<CalendarDays className="size-4" />} label="Created" value={formatDateTime(ticket.created_on)} />
             <DetailRow icon={<User className="size-4" />} label="Requester" value={ticket.author} />
-            <DetailRow icon={<Fingerprint className="size-4" />} label="Requester Email" value={ticket.author_email} />
             <DetailRow icon={<UserCog className="size-4" />} label="Assigned Engineer" value={ticket.assigned_engineer ?? 'Unassigned'} />
             <DetailRow icon={<AppWindow className="size-4" />} label="Technology / App" value={ticket.technology_app_item || 'Unknown'} />
+            <DetailRow icon={<ShieldCheck className="size-4" />} label="AI Confidence" value={ticket.ai_confidence_level ? ticket.ai_confidence_level : 'n/a'} />
           </CardContent>
         </Card>
 

@@ -86,12 +86,10 @@ def background_process_ticket_creation(ticket_no: str, username: str):
         ticket.difficulty = result.difficulty
         ticket.trend_warning = trend["trend_warning"]
 
-        # Self-service (P4 + Easy) tickets don't need to be routed to a team.
-        # Uses the final (possibly trend-bumped) priority -- if a ticket got
-        # escalated out of P4 because of a spike, it correctly stops
-        # qualifying as self-service and gets routed to a real team.
+        # Self-service (P4 + Easy) tickets can still be routed to a team so
+        # engineers can see them in case the user needs further help.
         is_self_service = final_priority == "P4" and result.difficulty == "Easy"
-        ticket.assigned_team = None if is_self_service else result.assigned_team
+        ticket.assigned_team = result.assigned_team
 
         ticket.ai_recommended_steps = result.recommended_steps
         ticket.ai_confidence = result.confidence
@@ -125,8 +123,7 @@ def background_process_ticket_creation(ticket_no: str, username: str):
         log_activity(
             db, ticket, "AI System",
             f"Ticket auto-classified as {result.category} / {final_priority} / "
-            f"{result.difficulty} difficulty"
-            + ("" if is_self_service else f", routed to {result.assigned_team}")
+            f"{result.difficulty} difficulty, routed to {result.assigned_team}"
             + f". User urgency: {ticket.user_priority}/5. "
             f"Target resolution: {hours}h by {sla['due_by'].strftime('%b %d, %H:%M UTC')} "
             f"(confidence: {ticket.ai_confidence_level}).",
@@ -183,7 +180,7 @@ def background_reanalyze_ticket(ticket_no: str):
         ticket.priority = final_priority
         ticket.difficulty = result.difficulty
         ticket.trend_warning = trend["trend_warning"]
-        ticket.assigned_team = None if is_self_service else result.assigned_team
+        ticket.assigned_team = result.assigned_team
         ticket.ai_recommended_steps = result.recommended_steps
         ticket.ai_confidence = result.confidence
 
@@ -204,9 +201,7 @@ def background_reanalyze_ticket(ticket_no: str):
         hours = round(sla["sla_minutes"] / 60, 1)
         log_activity(
             db, ticket, "AI System",
-            f"Re-analyzed: {result.category} / {final_priority} / {result.difficulty} difficulty"
-            + ("" if is_self_service else f", routed to {result.assigned_team}")
-            + f". Target resolution: {hours}h "
+            f"Re-analyzed: {result.category} / {final_priority} / {result.difficulty} difficulty, routed to {result.assigned_team}. Target resolution: {hours}h "
             f"by {sla['due_by'].strftime('%b %d, %H:%M UTC')} (confidence: {ticket.ai_confidence_level}).",
         )
         if trend["trend_warning"]:
@@ -238,7 +233,6 @@ def create_ticket(
         status=TicketStatus.open,
         author=current_user.full_name,
         author_username=current_user.username,
-        author_email=payload.email,
         technology_app_item=payload.technology_app_item,
         created_on=created_on,
         user_priority=payload.user_priority,
@@ -342,7 +336,7 @@ def list_tickets(
 # ------------------------------------------------------------------
 # GET /tickets/{ticket_no}  -- PUBLIC, no login required
 # ------------------------------------------------------------------
-@router.get("/{ticket_no}", response_model=TicketTrackOut)
+@router.get("/{ticket_no}")
 def get_ticket(
     ticket_no: str,
     current_user: MockUser = Depends(get_current_user),
@@ -358,7 +352,9 @@ def get_ticket(
     if current_user.role == Role.engineer and ticket.assigned_team != current_user.team:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This ticket isn't assigned to your team")
 
-    return ticket
+    if current_user.role in (Role.admin, Role.engineer):
+        return TicketOut.model_validate(ticket)
+    return TicketTrackOut.model_validate(ticket)
 
 
 # ------------------------------------------------------------------

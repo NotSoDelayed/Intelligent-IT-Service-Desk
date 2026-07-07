@@ -15,7 +15,6 @@ export type TicketSort = 'queue' | 'newest';
 
 export interface TicketCreatePayload {
   name: string;
-  email: string;
   title: string;
   content: string;
   technology_app_item: string;
@@ -67,12 +66,12 @@ export interface TicketListItemDto {
   assigned_team: string | null;
   assigned_engineer: string | null;
   author: string;
-  author_email: string;
   age: number;
   created_on: string;
   due_by: string | null;
   sla_status: string | null;
   user_priority: number | null;
+  ai_confidence_level?: string | null;
 }
 
 export interface TicketPageDto {
@@ -90,7 +89,6 @@ export interface TicketDetailDto {
   content: string;
   status: TicketBackendStatus;
   author: string;
-  author_email: string;
   age: number;
   created_on: string;
   ticket_start_date: string | null;
@@ -106,6 +104,7 @@ export interface TicketDetailDto {
   assigned_team: string | null;
   ai_recommended_steps: string[] | null;
   ai_confidence: number | null;
+  ai_confidence_level: string | null;
   ai_summary: string | null;
   user_self_help_steps: string[] | null;
   self_help_note: string | null;

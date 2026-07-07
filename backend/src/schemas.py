@@ -31,7 +31,6 @@ class TicketCreate(BaseModel):
     title: str = Field(..., min_length=4, max_length=255)
     content: str = Field(..., min_length=10)
     user_priority: int = Field(default=3, ge=1, le=5)
-    email: str = Field(..., min_length=3, max_length=150)
     technology_app_item: str = Field(..., min_length=2, max_length=255)
 
 
@@ -95,7 +94,6 @@ class TicketOut(BaseModel):
     status: str
     author: str
     author_username: str
-    author_email: str | None = None
     technology_app_item: str | None = None
     age: int
     created_on: datetime
@@ -158,7 +156,6 @@ class TicketListOut(BaseModel):
     is_trending: bool = False
     author: str
     author_username: str
-    author_email: str | None = None
     age: int
     created_on: datetime
     due_by: datetime | None = None
@@ -191,7 +188,6 @@ class TicketTrackOut(BaseModel):
     status: str
     severity: str
     author: str
-    author_email: str | None = None
     technology_app_item: str | None = None
     assigned_engineer: str | None = None
     priority: str | None = None
@@ -206,6 +202,7 @@ class TicketTrackOut(BaseModel):
     user_priority: int | None = None
 
     ai_confidence: int | None = None
+    ai_confidence_level: str | None = None
     ai_summary: str | None = None
     duplicate_warning: str | None = None
     trend_warning: str | None = None

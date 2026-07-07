@@ -9,7 +9,6 @@ import {
   ClipboardList,
   House,
   Lightbulb,
-  Mail,
   PlusCircle,
   RotateCcw,
   ShieldCheck,
@@ -38,7 +37,6 @@ import { formatBackendCategory, toUiPriority, toUiStatus } from '@/features/tick
 
 type FormState = {
   name: string;
-  email: string;
   title: string;
   content: string;
   technology_app_item: string;
@@ -49,7 +47,6 @@ type FormErrors = Partial<Record<keyof FormState, string>>;
 
 const initialForm: FormState = {
   name: '',
-  email: '',
   title: '',
   content: '',
   technology_app_item: '',
@@ -133,7 +130,6 @@ export default function CreateTicketPage({ refreshInterval = 5000 }: { refreshIn
 
     const payload: TicketCreatePayload = {
       name: form.name.trim(),
-      email: form.email.trim(),
       title: form.title.trim(),
       content: form.content.trim(),
       technology_app_item: form.technology_app_item.trim(),
@@ -190,17 +186,6 @@ export default function CreateTicketPage({ refreshInterval = 5000 }: { refreshIn
                     placeholder="John Doe"
                     autoComplete="name"
                     aria-invalid={Boolean(errors.name)}
-                    disabled={createMutation.isPending}
-                  />
-                </FormField>
-                <FormField label="Email address" error={errors.email}>
-                  <Input
-                    type="email"
-                    value={form.email}
-                    onChange={handleChange('email')}
-                    placeholder="johndoe@mail.com"
-                    autoComplete="email"
-                    aria-invalid={Boolean(errors.email)}
                     disabled={createMutation.isPending}
                   />
                 </FormField>
@@ -434,7 +419,6 @@ function TicketCreatedResult({
           </CardHeader>
           <CardContent className="space-y-3 text-sm p-6 pt-0">
             <ResultItem label="Requester" value={form.name} icon={<User className="size-4" />} />
-            <ResultItem label="Email" value={form.email} icon={<Mail className="size-4" />} />
             <ResultItem label="Technology" value={form.technology_app_item} icon={<AppWindow className="size-4" />} />
           </CardContent>
         </Card>
@@ -457,13 +441,8 @@ function ResultItem({ label, value, icon }: { label: string; value: React.ReactN
 
 function validateForm(form: FormState): FormErrors {
   const errors: FormErrors = {};
-  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
   if (form.name.trim().length < 2) {
     errors.name = 'Enter at least 2 characters.';
-  }
-  if (!emailPattern.test(form.email.trim())) {
-    errors.email = 'Enter a valid email address.';
   }
   if (form.title.trim().length < 4) {
     errors.title = 'Enter at least 4 characters.';

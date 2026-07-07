@@ -42,7 +42,6 @@ class Ticket(Base):
     status = Column(Enum(TicketStatus), default=TicketStatus.open, nullable=False)
     author = Column(String(150), nullable=False)
     author_username = Column(String(150), nullable=False)
-    author_email = Column(String(150), nullable=True)
     technology_app_item = Column(String(255), nullable=True)
     created_on = Column(DateTime, default=datetime.utcnow, nullable=False)
     ticket_start_date = Column(DateTime, nullable=True)

@@ -500,7 +500,6 @@ function TicketDetailsContent({
                   <User className="size-3.5" />
                   {ticket.author}
                 </Badge>
-                <Badge variant="outline">{ticket.author_email}</Badge>
               </div>
             </div>
           </CardHeader>
@@ -571,7 +570,7 @@ function TicketDetailsContent({
           />
           <MetricCard
             title="AI Confidence"
-            value={ticket.ai_confidence !== null ? `${ticket.ai_confidence}%` : 'n/a'}
+            value={ticket.ai_confidence_level ? ticket.ai_confidence_level : 'n/a'}
             icon={<ShieldCheck className="size-4" />}
             description={ticket.ai_summary ? 'Classifier summary available' : 'No summary available'}
           />
@@ -584,7 +583,6 @@ function TicketDetailsContent({
           <CardContent className="space-y-4 text-sm p-6 pt-0">
             <DetailRow icon={<CalendarDays className="size-4" />} label="Created" value={formatDateTime(ticket.created_on)} />
             <DetailRow icon={<Clock3 className="size-4" />} label="Age" value={`${ticket.age} days`} />
-            <DetailRow icon={<User className="size-4" />} label="Requester Email" value={ticket.author_email || 'Unknown'} />
             <DetailRow icon={<UserCog className="size-4" />} label="Assigned Engineer" value={ticket.assigned_engineer ?? 'Unassigned'} />
             <DetailRow icon={<UserCog className="size-4" />} label="Assigned Team" value={ticket.assigned_team ?? 'Unassigned'} />
             <DetailRow icon={<AlertTriangle className="size-4" />} label="Severity" value={ticket.severity} />
@@ -600,7 +598,7 @@ function TicketDetailsContent({
             <DetailRow label="Suggested Category" value={formatBackendCategory(ticket.category)} />
             <DetailRow label="Suggested Priority" value={ticket.priority ?? 'Unknown'} />
             <DetailRow label="Difficulty" value={ticket.difficulty ?? 'Unknown'} />
-            <DetailRow label="Confidence" value={ticket.ai_confidence !== null ? `${ticket.ai_confidence}%` : 'n/a'} />
+            <DetailRow label="Confidence" value={ticket.ai_confidence_level ? ticket.ai_confidence_level : 'n/a'} />
             <div className="rounded-xl border border-border bg-muted/40 p-4">
               <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Summary</p>
               <p className="mt-2 text-sm text-foreground">
