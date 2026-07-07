@@ -1,5 +1,5 @@
-# ---- Build stage ----
-FROM node:20-alpine AS build
+# ---- Base stage ----
+FROM node:20-alpine AS base
 WORKDIR /app
 
 COPY package*.json ./
@@ -14,10 +14,18 @@ COPY . .
 ARG VITE_API_URL=http://localhost:8000
 ENV VITE_API_URL=$VITE_API_URL
 
+# ---- Dev stage ----
+FROM base AS dev
+EXPOSE 5173
+# The --host flag ensures Vite is accessible from outside the docker container
+CMD ["npm", "run", "dev", "--", "--host"]
+
+# ---- Build stage ----
+FROM base AS build
 RUN npm run build
 
 # ---- Serve stage ----
-FROM nginx:alpine
+FROM nginx:alpine AS prod
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
