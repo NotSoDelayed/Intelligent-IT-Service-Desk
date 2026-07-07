@@ -11,6 +11,7 @@ from classifier import (
     classify_ticket,
     compute_sla,
     is_probable_spam,
+    TEAMS,
     TREND_WINDOW_HOURS,
 )
 from database import get_db, SessionLocal
@@ -24,6 +25,7 @@ from schemas import (
     TicketTrackOut,
     TicketUpdateAdmin,
     UserCompleteRequest,
+    UserEscalateRequest,
 )
 
 router = APIRouter(prefix="/tickets", tags=["Tickets"])
@@ -402,6 +404,60 @@ def mark_self_service_complete(
 
 
 # ------------------------------------------------------------------
+# POST /tickets/{ticket_no}/escalate  -- PUBLIC (ticket owner only)
+# The counterpart to /complete. Self-service tickets only (P4 + Easy).
+# The user tried the self-help steps and it didn't work -- this bumps
+# the ticket to a real priority/difficulty, assigns it a real team
+# (it had none before, since self-service tickets skip team routing),
+# and recalculates the SLA. From here it behaves like any normal
+# engineer-handled ticket: an engineer from that team sees it in their
+# queue and self-claims it the usual way.
+# ------------------------------------------------------------------
+@router.post("/{ticket_no}/escalate", response_model=TicketTrackOut)
+def escalate_self_service_ticket(
+    ticket_no: str,
+    payload: UserEscalateRequest,
+    db: Session = Depends(get_db),
+):
+    ticket = db.query(Ticket).filter(Ticket.ticket_no == ticket_no).first()
+    if not ticket:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket not found")
+
+    if ticket.author_username != payload.username:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This ticket doesn't belong to that username")
+
+    if not ticket.is_self_service:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "This action is only available for self-service (P4 + Easy) tickets",
+        )
+
+    if ticket.status in (TicketStatus.resolved, TicketStatus.closed):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Ticket is already {ticket.status.value}")
+
+    old_priority, old_difficulty = ticket.priority, ticket.difficulty
+
+    ticket.priority = "P3"
+    ticket.difficulty = "Medium"
+    ticket.severity = Severity.medium
+    ticket.assigned_team = TEAMS.get(ticket.category, "Service Desk Tier 1")
+
+    sla = compute_sla(ticket.priority, ticket.difficulty, ticket.created_on)
+    ticket.sla_minutes = sla["sla_minutes"]
+    ticket.due_by = sla["due_by"]
+
+    log_activity(
+        db, ticket, "User",
+        f"User reported the self-help steps didn't resolve the issue -- escalated "
+        f"from {old_priority}/{old_difficulty} to {ticket.priority}/{ticket.difficulty} "
+        f"and routed to {ticket.assigned_team}.",
+    )
+    db.commit()
+    db.refresh(ticket)
+    return ticket
+
+
+# ------------------------------------------------------------------
 # PATCH /tickets/{ticket_no}  -- ADMIN or ENGINEER
 # Admins can change anything. Engineers can only update status (e.g.
 # mark a ticket Resolved once the user's issue is fixed) and claim/
@@ -437,15 +493,15 @@ def update_ticket(
             )
         if payload.status == TicketStatus.flagged.value:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Only admins can flag a ticket")
-            
+
     if current_user.role == Role.user:
         if ticket.author_username != current_user.username:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to update this ticket")
-            
+
         allowed_user_fields = {"status"}
         if set(update_data.keys()) - allowed_user_fields:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Users can only update the ticket status")
-        
+
         if payload.status != TicketStatus.closed.value:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Users can only close tickets")
 

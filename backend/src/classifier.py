@@ -288,7 +288,7 @@ def _rule_based_classify(title: str, content: str, user_priority: int = 3) -> di
     else:
         difficulty = "Medium"
 
-    # Option A: self-help for any Easy ticket regardless of priority
+    # Self-help for any Easy ticket regardless of priority
     user_self_help_steps = (
         SELF_HELP_MAP.get(category, SELF_HELP_MAP["Other"])
         if difficulty == "Easy"
@@ -403,7 +403,7 @@ def classify_ticket(
     priority = data.get("priority") if data.get("priority") in PRIORITIES else "P3"
     difficulty = data.get("difficulty") if data.get("difficulty") in DIFFICULTIES else "Medium"
 
-    # Option A: self-help for any Easy ticket, regardless of priority
+    # Self-help for any Easy ticket, regardless of priority
     raw_self_help = data.get("user_self_help_steps", [])
     is_self_help_eligible = difficulty == "Easy"
     user_self_help_steps = raw_self_help[:4] if is_self_help_eligible and raw_self_help else []
@@ -612,9 +612,9 @@ def _check_duplicate_keywords(
 # SLA / time-budget engine
 # ============================================================
 DIFFICULTY_BASE_MINUTES = {
-    "Easy": 90,     # was 60 -- gives engineers more comfortable time even on quick tickets
+    "Easy": 90,     
     "Medium": 240,
-    "Hard": 960,    # was 1440 -- so the worst case (P4+Hard) caps at exactly 1 day
+    "Hard": 960,   
 }
 
 PRIORITY_MULTIPLIER = {

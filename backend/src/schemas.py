@@ -62,6 +62,15 @@ class UserCompleteRequest(BaseModel):
     username: str = Field(..., min_length=2, max_length=150)
 
 
+class UserEscalateRequest(BaseModel):
+    """
+    Public 'Can't Resolve' button -- the counterpart to complete. Only
+    usable on self-service (P4 + Easy) tickets. Proves ownership with
+    username, no login needed.
+    """
+    username: str = Field(..., min_length=2, max_length=150)
+
+
 class CommentCreate(BaseModel):
     message: str = Field(..., min_length=1)
 
