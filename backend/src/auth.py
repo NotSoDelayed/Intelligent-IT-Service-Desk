@@ -103,6 +103,17 @@ def resolve_user(username: str, full_name: str | None = None) -> MockUser:
     return MockUser(username=username, role=role, team=team, full_name=resolved_name)
 
 
+def get_team_from_engineer_name(full_name: str) -> str | None:
+    """
+    Looks up the corresponding team for a given engineer's full name.
+    Useful when the frontend passes the display name instead of the username.
+    """
+    for username, name in FULL_NAMES.items():
+        if name == full_name:
+            return get_engineer_team(username)
+    return None
+
+
 # ------------------------------------------------------------------
 # FastAPI dependencies
 # ------------------------------------------------------------------

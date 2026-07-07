@@ -35,6 +35,13 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import {
   ConfirmationDialog,
   ErrorState,
   MetricCard,
@@ -63,7 +70,18 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 
-export default function TicketDetailsPage({ refreshInterval = 5000 }: { refreshInterval?: number }) {
+const REFRESH_INTERVAL_MS = 5000;
+
+const ENGINEER_NAMES = [
+  'Alex Tan (Network)',
+  'Priya Nair (Hardware)',
+  'Daniel Wong (Software)',
+  'Farah Aziz (Access & Security)',
+  'Marcus Lee (System)',
+  'Nurul Hana (General)',
+];
+
+export default function TicketDetailsPage({ refreshInterval = REFRESH_INTERVAL_MS }: { refreshInterval?: number }) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -75,6 +93,17 @@ export default function TicketDetailsPage({ refreshInterval = 5000 }: { refreshI
   const [assignOpen, setAssignOpen] = useState(false);
   const [unassignOpen, setUnassignOpen] = useState(false);
   const [assigneeName, setAssigneeName] = useState('');
+
+  const [isAdmin, setIsAdmin] = useState(false);
+  useEffect(() => {
+    try {
+      const userStr = localStorage.getItem('user');
+      if (userStr) {
+        const user = JSON.parse(userStr);
+        setIsAdmin(user.username?.startsWith('admin_') ?? false);
+      }
+    } catch {}
+  }, []);
 
   const ticketQuery = useQuery({
     queryKey: ['ticket', id],
@@ -261,7 +290,7 @@ export default function TicketDetailsPage({ refreshInterval = 5000 }: { refreshI
                 Back to Tickets
               </Link>
             </Button>
-            {ticket?.status !== 'Closed' && (
+            {isAdmin && ticket?.status !== 'Closed' && (
               <Button
                 variant="outline"
                 onClick={() => setReanalyzeOpen(true)}
@@ -274,14 +303,16 @@ export default function TicketDetailsPage({ refreshInterval = 5000 }: { refreshI
             {ticket?.status !== 'Resolved' && ticket?.status !== 'Closed' && (
               <>
                 {ticket?.assigned_engineer ? (
-                  <Button
-                    variant="outline"
-                    onClick={() => setUnassignOpen(true)}
-                    disabled={assignMutation.isPending || isLoading}
-                  >
-                    <UserMinus className="size-4" />
-                    Unassign
-                  </Button>
+                  isAdmin && (
+                    <Button
+                      variant="outline"
+                      onClick={() => setUnassignOpen(true)}
+                      disabled={assignMutation.isPending || isLoading}
+                    >
+                      <UserMinus className="size-4" />
+                      Unassign
+                    </Button>
+                  )
                 ) : (
                   <Button
                     variant="outline"
@@ -297,7 +328,7 @@ export default function TicketDetailsPage({ refreshInterval = 5000 }: { refreshI
                 )}
               </>
             )}
-            {ticket?.status !== 'Closed' && (
+            {isAdmin && ticket?.status !== 'Closed' && (
               ticket?.status === 'Resolved' ? (
                 <Button
                   variant="outline"
@@ -318,7 +349,7 @@ export default function TicketDetailsPage({ refreshInterval = 5000 }: { refreshI
                 </Button>
               )
             )}
-            {ticket?.status !== 'Closed' && (
+            {isAdmin && ticket?.status !== 'Closed' && (
               <Button
                 variant="outline"
                 onClick={() => setCloseOpen(true)}
@@ -328,14 +359,16 @@ export default function TicketDetailsPage({ refreshInterval = 5000 }: { refreshI
                 Close Ticket
               </Button>
             )}
-            <Button
-              variant="destructive"
-              onClick={() => setDeleteOpen(true)}
-              disabled={deleteMutation.isPending || isLoading}
-            >
-              <Trash2 className="size-4" />
-              Delete
-            </Button>
+            {isAdmin && (
+              <Button
+                variant="destructive"
+                onClick={() => setDeleteOpen(true)}
+                disabled={deleteMutation.isPending || isLoading}
+              >
+                <Trash2 className="size-4" />
+                Delete
+              </Button>
+            )}
           </>
         }
       />
@@ -424,19 +457,28 @@ export default function TicketDetailsPage({ refreshInterval = 5000 }: { refreshI
           <DialogHeader>
             <DialogTitle>Assign Ticket</DialogTitle>
             <DialogDescription>
-              Enter the username of the engineer you want to assign this ticket to.
+              Select the engineer you want to assign this ticket to.
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
             <div className="space-y-2">
               <Label htmlFor="assignee">Engineer Username</Label>
-              <Input
-                id="assignee"
+              <Select
                 value={assigneeName}
-                onChange={(e) => setAssigneeName(e.target.value)}
-                placeholder="Doe John"
+                onValueChange={setAssigneeName}
                 disabled={assignMutation.isPending}
-              />
+              >
+                <SelectTrigger id="assignee" className="w-full">
+                  <SelectValue placeholder="Select an engineer" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ENGINEER_NAMES.map((name) => (
+                    <SelectItem key={name} value={name}>
+                      {name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter>

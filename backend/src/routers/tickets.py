@@ -528,6 +528,15 @@ def update_ticket(
         if new_eng != ticket.assigned_engineer:
             ticket.assigned_engineer = new_eng
             changes.append(f"assigned engineer: {new_eng or 'Unassigned'}")
+            
+            # If the engineer is set, automatically route the ticket to their team
+            from auth import get_team_from_engineer_name
+            if new_eng:
+                new_team = get_team_from_engineer_name(new_eng)
+                if new_team and new_team != ticket.assigned_team:
+                    ticket.assigned_team = new_team
+                    changes.append(f"assigned team: {new_team}")
+
         if new_eng and ticket.analytics and not ticket.analytics.first_responded_at:
             ticket.analytics.first_responded_at = datetime.utcnow()
 
