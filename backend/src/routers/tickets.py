@@ -92,7 +92,6 @@ def background_process_ticket_creation(ticket_no: str, username: str):
         ticket.assigned_team = None if is_self_service else result.assigned_team
 
         ticket.ai_recommended_steps = result.recommended_steps
-        ticket.ai_confidence = result.confidence
 
         if spam_flagged:
             # Override whatever the classifier reported -- it has no idea
@@ -183,7 +182,6 @@ def background_reanalyze_ticket(ticket_no: str):
         ticket.trend_warning = trend["trend_warning"]
         ticket.assigned_team = None if is_self_service else result.assigned_team
         ticket.ai_recommended_steps = result.recommended_steps
-        ticket.ai_confidence = result.confidence
 
         if spam_flagged:
             ticket.ai_confidence_level = "Low"
@@ -525,7 +523,6 @@ def reanalyze_ticket(
     ticket.difficulty = None
     ticket.assigned_team = None
     ticket.ai_recommended_steps = None
-    ticket.ai_confidence = None
     ticket.ai_confidence_level = None
     ticket.ai_confidence_reason = None
     ticket.trend_warning = None

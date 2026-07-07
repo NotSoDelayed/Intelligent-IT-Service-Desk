@@ -58,8 +58,7 @@ class Ticket(Base):
     difficulty = Column(String(10), nullable=True)
     assigned_team = Column(String(100), nullable=True)
     ai_recommended_steps = Column(JSON, nullable=True)
-    ai_confidence = Column(Integer, nullable=True)  # raw 0-100 score, kept for internal reference
-    ai_confidence_level = Column(String(10), nullable=True)  # "Low" / "Medium" / "High" -- what's actually shown
+    ai_confidence_level = Column(String(10), nullable=True)  # "Low" / "Medium" / "High"
     ai_confidence_reason = Column(Text, nullable=True)  # one-sentence explanation of the level above
     ai_summary = Column(Text, nullable=True)
 
