@@ -4,17 +4,17 @@ import { BarChart3, LayoutDashboard, Settings, TicketCheck, X } from 'lucide-rea
 import { cn } from '@/lib/utils';
 import { useSidebar } from './SidebarContext';
 
+import { useEffect, useState } from 'react';
+
 interface NavItem {
   label: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
 }
 
-const navItems: NavItem[] = [
-  { label: 'Dashboard', href: '/', icon: LayoutDashboard },
+const baseNavItems: NavItem[] = [
   { label: 'Tickets', href: '/tickets', icon: TicketCheck },
   { label: 'Analytics', href: '/analytics', icon: BarChart3 },
-  { label: 'Settings', href: '/settings', icon: Settings },
 ];
 
 function isActive(pathname: string, href: string): boolean {
@@ -25,6 +25,23 @@ function isActive(pathname: string, href: string): boolean {
 export function Sidebar() {
   const { isOpen, isCollapsed, viewport, close } = useSidebar();
   const { pathname } = useLocation();
+  const [navItems, setNavItems] = useState<NavItem[]>([baseNavItems[0]]);
+
+  useEffect(() => {
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr);
+        if (user.role === 'admin' || user.role === 'engineer') {
+          setNavItems(baseNavItems);
+        } else {
+          setNavItems([{ label: 'My Tickets', href: '/tickets', icon: TicketCheck }]);
+        }
+      } catch (e) {
+        // Fallback
+      }
+    }
+  }, []);
 
   const handleNavClick = useCallback(() => {
     // Close drawer on mobile after navigation

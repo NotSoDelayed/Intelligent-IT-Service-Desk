@@ -39,7 +39,6 @@ import { formatBackendCategory, toUiPriority, toUiStatus } from '@/features/tick
 type FormState = {
   name: string;
   email: string;
-  department: string;
   title: string;
   content: string;
   technology_app_item: string;
@@ -51,7 +50,6 @@ type FormErrors = Partial<Record<keyof FormState, string>>;
 const initialForm: FormState = {
   name: '',
   email: '',
-  department: '',
   title: '',
   content: '',
   technology_app_item: '',
@@ -66,22 +64,30 @@ const urgencyOptions = [
   { value: '5', label: '5 - Critical', description: 'Cannot work or service outage' },
 ];
 
-const departmentOptions = [
-  'IT Support Team',
-  'Software/Application Team',
-  'Network Team',
-  'Data Team',
-  'Infrastructure Team',
-  'Security Team',
-  'Helpdesk / Service Desk',
-  'Hardware Team',
-  'Other',
-];
 
-export default function CreateTicketPage() {
+
+function getInitialName(): string {
+  try {
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      const user = JSON.parse(userStr);
+      if (user.username) {
+        return user.username
+          .split('_')
+          .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
+          .join(' ');
+      }
+    }
+  } catch { }
+  return '';
+}
+
+export default function CreateTicketPage({ refreshInterval = 5000 }: { refreshInterval?: number }) {
   const queryClient = useQueryClient();
-  const [form, setForm] = useState<FormState>(initialForm);
-  const [departmentType, setDepartmentType] = useState<string>('');
+  const [form, setForm] = useState<FormState>(() => ({
+    ...initialForm,
+    name: getInitialName(),
+  }));
   const [errors, setErrors] = useState<FormErrors>({});
   const [createdTicket, setCreatedTicket] = useState<TicketDetailDto | null>(null);
 
@@ -90,7 +96,7 @@ export default function CreateTicketPage() {
     queryFn: () => getTicket(createdTicket?.ticket_no ?? ''),
     enabled: Boolean(createdTicket?.ticket_no),
     refetchInterval: (query) => {
-      return query.state.data && !query.state.data.category ? 3000 : false;
+      return query.state.data && !query.state.data.category ? refreshInterval : false;
     }
   });
 
@@ -128,7 +134,6 @@ export default function CreateTicketPage() {
     const payload: TicketCreatePayload = {
       name: form.name.trim(),
       email: form.email.trim(),
-      department: form.department.trim(),
       title: form.title.trim(),
       content: form.content.trim(),
       technology_app_item: form.technology_app_item.trim(),
@@ -139,8 +144,10 @@ export default function CreateTicketPage() {
   };
 
   const resetForm = () => {
-    setForm(initialForm);
-    setDepartmentType('');
+    setForm({
+      ...initialForm,
+      name: getInitialName(),
+    });
     setErrors({});
     setCreatedTicket(null);
     createMutation.reset();
@@ -164,7 +171,7 @@ export default function CreateTicketPage() {
       />
 
       {createdTicket && ticketToDisplay ? (
-        <TicketCreatedResult ticket={ticketToDisplay} onCreateAnother={resetForm} />
+        <TicketCreatedResult ticket={ticketToDisplay} form={form} onCreateAnother={resetForm} />
       ) : (
         <form onSubmit={handleSubmit} className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_360px]">
           <div className="space-y-6">
@@ -172,7 +179,7 @@ export default function CreateTicketPage() {
               <CardHeader className="pt-3">
                 <CardTitle className="flex items-center justify-center gap-1 text-center">
                   <User className="size-6 text-muted-foreground" />
-                  Requester Information
+                  User Information
                 </CardTitle>
               </CardHeader>
               <CardContent className="grid gap-4 p-3 md:grid-cols-2">
@@ -196,43 +203,6 @@ export default function CreateTicketPage() {
                     aria-invalid={Boolean(errors.email)}
                     disabled={createMutation.isPending}
                   />
-                </FormField>
-                <FormField label="Department" error={errors.department}>
-                  <Select
-                    value={departmentType}
-                    onValueChange={(value) => {
-                      setDepartmentType(value);
-                      if (value !== 'Other') {
-                        setForm((current) => ({ ...current, department: value }));
-                      } else {
-                        setForm((current) => ({ ...current, department: '' }));
-                      }
-                      setErrors((current) => ({ ...current, department: undefined }));
-                    }}
-                    disabled={createMutation.isPending}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select department" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {departmentOptions.map((option) => (
-                        <SelectItem key={option} value={option}>
-                          {option}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {departmentType === 'Other' && (
-                    <Input
-                      value={form.department}
-                      onChange={handleChange('department')}
-                      placeholder="Enter custom department..."
-                      autoComplete="organization"
-                      aria-invalid={Boolean(errors.department)}
-                      disabled={createMutation.isPending}
-                      className="mt-2"
-                    />
-                  )}
                 </FormField>
               </CardContent>
             </Card>
@@ -270,7 +240,7 @@ export default function CreateTicketPage() {
                   <Textarea
                     value={form.content}
                     onChange={handleChange('content')}
-                    placeholder="Describe your issue in detail, including any error messages or steps to reproduce."
+                    placeholder="Briefly describe the issue with as much supporting evidence as possible (screenshot, error message, etc)"
                     className="min-h-36"
                     aria-invalid={Boolean(errors.content)}
                     disabled={createMutation.isPending}
@@ -369,9 +339,11 @@ function FormField({
 
 function TicketCreatedResult({
   ticket,
+  form,
   onCreateAnother,
 }: {
   ticket: TicketDetailDto;
+  form: FormState;
   onCreateAnother: () => void;
 }) {
   const hasSelfHelp = Boolean(ticket.user_self_help_steps?.length || ticket.self_help_note);
@@ -461,10 +433,9 @@ function TicketCreatedResult({
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm p-6 pt-0">
-            <ResultItem label="Requester" value={ticket.author} icon={<User className="size-4" />} />
-            <ResultItem label="Email" value={ticket.author_email} icon={<Mail className="size-4" />} />
-            <ResultItem label="Department" value={ticket.department} icon={<House className="size-4" />} />
-            <ResultItem label="Technology" value={ticket.technology_app_item} icon={<AppWindow className="size-4" />} />
+            <ResultItem label="Requester" value={form.name} icon={<User className="size-4" />} />
+            <ResultItem label="Email" value={form.email} icon={<Mail className="size-4" />} />
+            <ResultItem label="Technology" value={form.technology_app_item} icon={<AppWindow className="size-4" />} />
           </CardContent>
         </Card>
       </aside>
@@ -493,9 +464,6 @@ function validateForm(form: FormState): FormErrors {
   }
   if (!emailPattern.test(form.email.trim())) {
     errors.email = 'Enter a valid email address.';
-  }
-  if (!form.department.trim()) {
-    errors.department = 'Department is required.';
   }
   if (form.title.trim().length < 4) {
     errors.title = 'Enter at least 4 characters.';

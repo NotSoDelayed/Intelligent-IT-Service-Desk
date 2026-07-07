@@ -10,6 +10,7 @@ import {
   Clock3,
   Fingerprint,
   History,
+  Lightbulb,
   RefreshCw,
   RotateCcw,
   ShieldCheck,
@@ -45,11 +46,8 @@ import { PriorityBadge } from '@/components/shared/PriorityBadge';
 import { StatusBadge } from '@/components/shared/StatusBadge';
 import { cn } from '@/lib/utils';
 import {
-  deleteTicket,
   getTicket,
   getTicketComments,
-  reanalyzeTicket,
-  updateTicket,
   updateTicketStatus,
   addTicketComment,
 } from '@/features/tickets/api/tickets';
@@ -63,18 +61,11 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 
-export default function TicketDetailsPage({ refreshInterval = 5000 }: { refreshInterval?: number }) {
+export default function UserTicketDetailsPage({ refreshInterval = 5000 }: { refreshInterval?: number }) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [reanalyzeOpen, setReanalyzeOpen] = useState(false);
   const [closeOpen, setCloseOpen] = useState(false);
-  const [resolveOpen, setResolveOpen] = useState(false);
-  const [deleteOpen, setDeleteOpen] = useState(false);
-  const [unresolveOpen, setUnresolveOpen] = useState(false);
-  const [assignOpen, setAssignOpen] = useState(false);
-  const [unassignOpen, setUnassignOpen] = useState(false);
-  const [assigneeName, setAssigneeName] = useState('');
 
   const ticketQuery = useQuery({
     queryKey: ['ticket', id],
@@ -103,21 +94,7 @@ export default function TicketDetailsPage({ refreshInterval = 5000 }: { refreshI
     previousCategory.current = ticketQuery.data?.category;
   }, [ticketQuery.data?.category, queryClient, id]);
 
-  const reanalyzeMutation = useMutation({
-    mutationFn: () => reanalyzeTicket(id ?? ''),
-    onSuccess: async (ticket) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['ticket', id] }),
-        queryClient.invalidateQueries({ queryKey: ['ticket-comments', id] }),
-      ]);
-      queryClient.setQueryData(['ticket', id], ticket);
-      toast.success('Ticket re-analysis in progress...');
-      setReanalyzeOpen(false);
-    },
-    onError: () => {
-      toast.error('We could not reanalyze this ticket. Please try again.');
-    },
-  });
+
 
   const closeMutation = useMutation({
     mutationFn: () => updateTicketStatus(id ?? '', toBackendStatus('closed')),
@@ -135,59 +112,7 @@ export default function TicketDetailsPage({ refreshInterval = 5000 }: { refreshI
     },
   });
 
-  const assignMutation = useMutation({
-    mutationFn: (engineerName: string | null) => updateTicket(id ?? '', { assigned_engineer: engineerName }),
-    onSuccess: async (ticket, engineerName) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['ticket', id] }),
-        queryClient.invalidateQueries({ queryKey: ['ticket-comments', id] }),
-      ]);
-      queryClient.setQueryData(['ticket', id], ticket);
-      if (engineerName) {
-        toast.success(`Ticket assigned to ${ticket.assigned_engineer}.`);
-      } else {
-        toast.success('Ticket unassigned.');
-      }
-      setAssignOpen(false);
-      setUnassignOpen(false);
-      setAssigneeName('');
-    },
-    onError: () => {
-      toast.error('We could not update the assignment. Please try again.');
-    },
-  });
 
-  const resolveMutation = useMutation({
-    mutationFn: () => updateTicketStatus(id ?? '', toBackendStatus('resolved')),
-    onSuccess: async (ticket) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['ticket', id] }),
-        queryClient.invalidateQueries({ queryKey: ['ticket-comments', id] }),
-      ]);
-      queryClient.setQueryData(['ticket', id], ticket);
-      toast.success('Ticket marked as done.');
-      setResolveOpen(false);
-    },
-    onError: () => {
-      toast.error('We could not mark this ticket as done. Please try again.');
-    },
-  });
-
-  const unresolveMutation = useMutation({
-    mutationFn: () => updateTicketStatus(id ?? '', toBackendStatus('open')),
-    onSuccess: async (ticket) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['ticket', id] }),
-        queryClient.invalidateQueries({ queryKey: ['ticket-comments', id] }),
-      ]);
-      queryClient.setQueryData(['ticket', id], ticket);
-      toast.success('Ticket marked as undone.');
-      setUnresolveOpen(false);
-    },
-    onError: () => {
-      toast.error('We could not mark this ticket as undone. Please try again.');
-    },
-  });
 
   const addCommentMutation = useMutation({
     mutationFn: (message: string) => addTicketComment(id ?? '', { message }),
@@ -200,22 +125,7 @@ export default function TicketDetailsPage({ refreshInterval = 5000 }: { refreshI
     },
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: () => deleteTicket(id ?? ''),
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ['ticket-list'] }),
-        queryClient.removeQueries({ queryKey: ['ticket', id] }),
-        queryClient.removeQueries({ queryKey: ['ticket-comments', id] }),
-      ]);
-      toast.success('Ticket deleted.');
-      setDeleteOpen(false);
-      navigate('/tickets');
-    },
-    onError: () => {
-      toast.error('We could not delete this ticket. Please try again.');
-    },
-  });
+
 
   const ticket = ticketQuery.data;
   const comments = commentsQuery.data ?? [];
@@ -264,63 +174,6 @@ export default function TicketDetailsPage({ refreshInterval = 5000 }: { refreshI
             {ticket?.status !== 'Closed' && (
               <Button
                 variant="outline"
-                onClick={() => setReanalyzeOpen(true)}
-                disabled={reanalyzeMutation.isPending || isLoading || (ticket ? !ticket.category : false)}
-              >
-                <RefreshCw className={cn('size-4', (reanalyzeMutation.isPending || (ticket && !ticket.category)) && 'animate-spin')} />
-                Reanalyze
-              </Button>
-            )}
-            {ticket?.status !== 'Resolved' && ticket?.status !== 'Closed' && (
-              <>
-                {ticket?.assigned_engineer ? (
-                  <Button
-                    variant="outline"
-                    onClick={() => setUnassignOpen(true)}
-                    disabled={assignMutation.isPending || isLoading}
-                  >
-                    <UserMinus className="size-4" />
-                    Unassign
-                  </Button>
-                ) : (
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setAssigneeName('');
-                      setAssignOpen(true);
-                    }}
-                    disabled={assignMutation.isPending || isLoading}
-                  >
-                    <UserPlus className="size-4" />
-                    Assign to...
-                  </Button>
-                )}
-              </>
-            )}
-            {ticket?.status !== 'Closed' && (
-              ticket?.status === 'Resolved' ? (
-                <Button
-                  variant="outline"
-                  onClick={() => setUnresolveOpen(true)}
-                  disabled={unresolveMutation.isPending || isLoading}
-                >
-                  <RotateCcw className={cn('size-4', unresolveMutation.isPending && 'animate-spin')} />
-                  Mark as Undone
-                </Button>
-              ) : (
-                <Button
-                  variant="outline"
-                  onClick={() => setResolveOpen(true)}
-                  disabled={resolveMutation.isPending || isLoading}
-                >
-                  <CheckCircle2 className="size-4" />
-                  Mark as Done
-                </Button>
-              )
-            )}
-            {ticket?.status !== 'Closed' && (
-              <Button
-                variant="outline"
                 onClick={() => setCloseOpen(true)}
                 disabled={closeMutation.isPending || isLoading}
               >
@@ -328,14 +181,6 @@ export default function TicketDetailsPage({ refreshInterval = 5000 }: { refreshI
                 Close Ticket
               </Button>
             )}
-            <Button
-              variant="destructive"
-              onClick={() => setDeleteOpen(true)}
-              disabled={deleteMutation.isPending || isLoading}
-            >
-              <Trash2 className="size-4" />
-              Delete
-            </Button>
           </>
         }
       />
@@ -350,16 +195,6 @@ export default function TicketDetailsPage({ refreshInterval = 5000 }: { refreshI
       )}
 
       <ConfirmationDialog
-        open={reanalyzeOpen}
-        onOpenChange={setReanalyzeOpen}
-        title="Reanalyze ticket?"
-        description="This will re-run the AI classifier and update the suggested category, priority, and SLA fields."
-        confirmLabel="Reanalyze"
-        onConfirm={async () => {
-          await reanalyzeMutation.mutateAsync();
-        }}
-      />
-      <ConfirmationDialog
         open={closeOpen}
         onOpenChange={setCloseOpen}
         title="Close ticket?"
@@ -369,89 +204,6 @@ export default function TicketDetailsPage({ refreshInterval = 5000 }: { refreshI
           await closeMutation.mutateAsync();
         }}
       />
-      <ConfirmationDialog
-        open={resolveOpen}
-        onOpenChange={setResolveOpen}
-        title="Mark ticket as done?"
-        description="This will mark the ticket as resolved."
-        confirmLabel="Mark as Done"
-        onConfirm={async () => {
-          await resolveMutation.mutateAsync();
-        }}
-      />
-      <ConfirmationDialog
-        open={unresolveOpen}
-        onOpenChange={setUnresolveOpen}
-        title="Mark ticket as undone?"
-        description="This will revert the ticket status back to open."
-        confirmLabel="Mark as Undone"
-        onConfirm={async () => {
-          await unresolveMutation.mutateAsync();
-        }}
-      />
-      <ConfirmationDialog
-        open={deleteOpen}
-        onOpenChange={setDeleteOpen}
-        title="Delete ticket?"
-        description="This action cannot be undone. The ticket and its related data will be removed."
-        confirmLabel="Delete"
-        variant="destructive"
-        onConfirm={async () => {
-          await deleteMutation.mutateAsync();
-        }}
-      />
-
-      <ConfirmationDialog
-        open={unassignOpen}
-        onOpenChange={setUnassignOpen}
-        title="Unassign ticket?"
-        description={`This will remove ${ticket?.assigned_engineer} from this ticket.`}
-        confirmLabel="Unassign"
-        onConfirm={async () => {
-          await assignMutation.mutateAsync(null);
-        }}
-      />
-
-      <Dialog open={assignOpen} onOpenChange={setAssignOpen}>
-        <DialogContent
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && assigneeName.trim() && !assignMutation.isPending) {
-              e.preventDefault();
-              assignMutation.mutate(assigneeName);
-            }
-          }}
-        >
-          <DialogHeader>
-            <DialogTitle>Assign Ticket</DialogTitle>
-            <DialogDescription>
-              Enter the username of the engineer you want to assign this ticket to.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <div className="space-y-2">
-              <Label htmlFor="assignee">Engineer Username</Label>
-              <Input
-                id="assignee"
-                value={assigneeName}
-                onChange={(e) => setAssigneeName(e.target.value)}
-                placeholder="Doe John"
-                disabled={assignMutation.isPending}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setAssignOpen(false)} disabled={assignMutation.isPending}>
-              Cancel
-            </Button>
-            <Button
-              onClick={() => assignMutation.mutate(assigneeName)}
-              disabled={!assigneeName.trim() || assignMutation.isPending}
-            >
-              Assign
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
@@ -500,7 +252,6 @@ function TicketDetailsContent({
                   <User className="size-3.5" />
                   {ticket.author}
                 </Badge>
-                <Badge variant="outline">{ticket.author_email}</Badge>
               </div>
             </div>
           </CardHeader>
@@ -562,65 +313,39 @@ function TicketDetailsContent({
       </div>
 
       <div className="space-y-6">
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-          <MetricCard
-            title="SLA Status"
-            value={ticket.sla_status ?? 'Unknown'}
-            icon={<Clock3 className="size-4" />}
-            description={ticket.due_by ? `Due ${formatDateTime(ticket.due_by)}` : 'No due date assigned'}
-          />
-          <MetricCard
-            title="AI Confidence"
-            value={ticket.ai_confidence !== null ? `${ticket.ai_confidence}%` : 'n/a'}
-            icon={<ShieldCheck className="size-4" />}
-            description={ticket.ai_summary ? 'Classifier summary available' : 'No summary available'}
-          />
-        </div>
-
         <Card>
           <CardHeader className="p-6">
             <CardTitle>Ticket Details</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-sm p-6 pt-0">
             <DetailRow icon={<CalendarDays className="size-4" />} label="Created" value={formatDateTime(ticket.created_on)} />
-            <DetailRow icon={<Clock3 className="size-4" />} label="Age" value={`${ticket.age} days`} />
-            <DetailRow icon={<User className="size-4" />} label="Requester Email" value={ticket.author_email || 'Unknown'} />
+            <DetailRow icon={<User className="size-4" />} label="Requester" value={ticket.author} />
+            <DetailRow icon={<Fingerprint className="size-4" />} label="Requester Email" value={ticket.author_email} />
             <DetailRow icon={<UserCog className="size-4" />} label="Assigned Engineer" value={ticket.assigned_engineer ?? 'Unassigned'} />
-            <DetailRow icon={<UserCog className="size-4" />} label="Assigned Team" value={ticket.assigned_team ?? 'Unassigned'} />
-            <DetailRow icon={<AlertTriangle className="size-4" />} label="Severity" value={ticket.severity} />
             <DetailRow icon={<AppWindow className="size-4" />} label="Technology / App" value={ticket.technology_app_item || 'Unknown'} />
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="p-6">
-            <CardTitle>AI Analysis</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4 text-sm p-6 pt-0">
-            <DetailRow label="Suggested Category" value={formatBackendCategory(ticket.category)} />
-            <DetailRow label="Suggested Priority" value={ticket.priority ?? 'Unknown'} />
-            <DetailRow label="Difficulty" value={ticket.difficulty ?? 'Unknown'} />
-            <DetailRow label="Confidence" value={ticket.ai_confidence !== null ? `${ticket.ai_confidence}%` : 'n/a'} />
-            <div className="rounded-xl border border-border bg-muted/40 p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Summary</p>
-              <p className="mt-2 text-sm text-foreground">
-                {ticket.ai_summary ?? 'No AI summary is available for this ticket yet.'}
-              </p>
-            </div>
-            <div className="rounded-xl border border-border bg-muted/20 p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Recommended Steps</p>
-              {ticket.ai_recommended_steps && ticket.ai_recommended_steps.length > 0 ? (
-                <ol className="mt-3 space-y-2 pl-5 text-sm text-foreground list-decimal">
-                  {ticket.ai_recommended_steps.map((step) => (
+        {(ticket.self_help_note || (ticket.user_self_help_steps && ticket.user_self_help_steps.length > 0)) && (
+          <Card>
+            <CardHeader className="p-6">
+              <CardTitle className="flex items-center gap-2">
+                <Lightbulb className="size-4 text-muted-foreground" />
+                Self Help Suggestions
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4 text-sm p-6 pt-0">
+              {ticket.self_help_note && <p className="text-muted-foreground">{ticket.self_help_note}</p>}
+              {ticket.user_self_help_steps && ticket.user_self_help_steps.length > 0 && (
+                <ol className="mt-3 space-y-2 pl-5 text-foreground list-decimal">
+                  {ticket.user_self_help_steps.map((step) => (
                     <li key={step}>{step}</li>
                   ))}
                 </ol>
-              ) : (
-                <p className="mt-2 text-sm text-muted-foreground">No recommended steps available.</p>
               )}
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );
@@ -650,23 +375,12 @@ function TicketDetailsSkeleton() {
         </Card>
       </div>
       <div className="space-y-6">
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-          <MetricCardSkeleton />
-          <MetricCardSkeleton />
-        </div>
         <Card>
           <CardContent className="space-y-3 p-6">
             <Skeleton className="h-5 w-40" />
             <Skeleton className="h-4 w-full" />
             <Skeleton className="h-4 w-11/12" />
             <Skeleton className="h-4 w-10/12" />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="space-y-3 p-6">
-            <Skeleton className="h-5 w-36" />
-            <Skeleton className="h-4 w-full" />
-            <Skeleton className="h-4 w-5/6" />
           </CardContent>
         </Card>
       </div>
@@ -702,7 +416,7 @@ function buildTimeline(ticket?: TicketDetailDto, comments: TicketComment[] = [])
       id: `created-${ticket.ticket_no}`,
       kind: 'system',
       title: 'Ticket created',
-      body: `Submitted by ${ticket.author} for ${ticket.technology_app_item}.`,
+      body: `Submitted by ${ticket.author}.`,
       timestamp: ticket.created_on,
     },
   ];

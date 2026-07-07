@@ -2,6 +2,7 @@ import { Menu, Moon, Sun } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useTheme } from '@/providers/ThemeProvider';
 import { useSidebar } from './SidebarContext';
+import { UserAvatar } from '@/components/UserAvatar';
 
 export function Topbar() {
   const { theme, toggleTheme } = useTheme();
@@ -29,7 +30,7 @@ export function Topbar() {
       <div className="flex-1" />
 
       {/* Right section */}
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-2">
         {/* Theme toggle */}
         <Button
           variant="ghost"
@@ -39,8 +40,10 @@ export function Topbar() {
         >
           {theme === 'light' ? <Moon className="size-[18px]" /> : <Sun className="size-[18px]" />}
         </Button>
-
+        
+        <UserAvatar />
       </div>
     </header>
   );
 }
+

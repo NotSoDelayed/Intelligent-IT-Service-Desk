@@ -22,7 +22,7 @@ PRIORITIES = ["P1", "P2", "P3", "P4"]
 DIFFICULTIES = ["Easy", "Medium", "Hard"]
 
 SELF_HELP_NOTE = (
-    "Your ticket has been received and an engineer will verify and close it. "
+    "Your ticket has been received and an engineer will look into it."
     "In the meantime, here are a few quick steps you can try yourself to resolve it faster."
 )
 

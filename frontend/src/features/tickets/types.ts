@@ -16,7 +16,6 @@ export type TicketSort = 'queue' | 'newest';
 export interface TicketCreatePayload {
   name: string;
   email: string;
-  department: string;
   title: string;
   content: string;
   technology_app_item: string;
@@ -67,7 +66,6 @@ export interface TicketListItemDto {
   difficulty: TicketBackendDifficulty | null;
   assigned_team: string | null;
   assigned_engineer: string | null;
-  department: string;
   author: string;
   author_email: string;
   age: number;
@@ -94,7 +92,6 @@ export interface TicketDetailDto {
   author: string;
   author_email: string;
   age: number;
-  department: string;
   created_on: string;
   ticket_start_date: string | null;
   ticket_closed_date: string | null;

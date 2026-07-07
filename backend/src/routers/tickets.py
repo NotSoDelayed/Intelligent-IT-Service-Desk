@@ -92,6 +92,7 @@ def background_process_ticket_creation(ticket_no: str, username: str):
         ticket.assigned_team = None if is_self_service else result.assigned_team
 
         ticket.ai_recommended_steps = result.recommended_steps
+        ticket.ai_confidence = result.confidence
 
         if spam_flagged:
             # Override whatever the classifier reported -- it has no idea
@@ -182,6 +183,7 @@ def background_reanalyze_ticket(ticket_no: str):
         ticket.trend_warning = trend["trend_warning"]
         ticket.assigned_team = None if is_self_service else result.assigned_team
         ticket.ai_recommended_steps = result.recommended_steps
+        ticket.ai_confidence = result.confidence
 
         if spam_flagged:
             ticket.ai_confidence_level = "Low"
@@ -234,6 +236,8 @@ def create_ticket(
         status=TicketStatus.open,
         author=current_user.full_name,
         author_username=current_user.username,
+        author_email=payload.email,
+        technology_app_item=payload.technology_app_item,
         created_on=created_on,
         user_priority=payload.user_priority,
         severity=Severity.medium,
@@ -277,12 +281,16 @@ def list_tickets(
     search: str | None = Query(None, description="Search by title or ticket no."),
     page: int = Query(1, ge=1, description="Page number, starts at 1"),
     limit: int = Query(20, ge=1, le=100, description="Tickets per page, max 100"),
-    current_user: MockUser = Depends(get_current_staff),
+    current_user: MockUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     q = db.query(Ticket)
 
-    if current_user.role == Role.engineer:
+    if current_user.role == Role.user:
+        q = q.filter(Ticket.author_username == current_user.username)
+        if status_filter:
+            q = q.filter(Ticket.status == status_filter)
+    elif current_user.role == Role.engineer:
         # Ignore any assigned_team query param -- engineers only ever see
         # their own team's queue, and Flagged tickets are always excluded.
         q = q.filter(Ticket.assigned_team == current_user.team)
@@ -297,6 +305,7 @@ def list_tickets(
             q = q.filter(Ticket.status != TicketStatus.flagged)
         if assigned_team:
             q = q.filter(Ticket.assigned_team == assigned_team)
+
 
     if severity_filter:
         q = q.filter(Ticket.severity == severity_filter)
@@ -334,15 +343,19 @@ def list_tickets(
 @router.get("/{ticket_no}", response_model=TicketTrackOut)
 def get_ticket(
     ticket_no: str,
+    current_user: MockUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """
-    Anyone with the ticket number can check status --
-    no login required. This is the track my ticket endpoint.
-    """
     ticket = db.query(Ticket).filter(Ticket.ticket_no == ticket_no).first()
     if not ticket:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No ticket found with that ticket number")
+
+    if current_user.role == Role.user and ticket.author_username != current_user.username:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to view this ticket")
+
+    if current_user.role == Role.engineer and ticket.assigned_team != current_user.team:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "This ticket isn't assigned to your team")
+
     return ticket
 
 
@@ -399,7 +412,7 @@ def mark_self_service_complete(
 def update_ticket(
     ticket_no: str,
     payload: TicketUpdateAdmin,
-    current_user: MockUser = Depends(get_current_staff),
+    current_user: MockUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     ticket = db.query(Ticket).filter(Ticket.ticket_no == ticket_no).first()
@@ -424,6 +437,17 @@ def update_ticket(
             )
         if payload.status == TicketStatus.flagged.value:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Only admins can flag a ticket")
+            
+    if current_user.role == Role.user:
+        if ticket.author_username != current_user.username:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to update this ticket")
+            
+        allowed_user_fields = {"status"}
+        if set(update_data.keys()) - allowed_user_fields:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Users can only update the ticket status")
+        
+        if payload.status != TicketStatus.closed.value:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "Users can only close tickets")
 
     actor_label = current_user.full_name
 
@@ -523,6 +547,7 @@ def reanalyze_ticket(
     ticket.difficulty = None
     ticket.assigned_team = None
     ticket.ai_recommended_steps = None
+    ticket.ai_confidence = None
     ticket.ai_confidence_level = None
     ticket.ai_confidence_reason = None
     ticket.trend_warning = None
@@ -547,7 +572,7 @@ def reanalyze_ticket(
 def add_comment(
     ticket_no: str,
     payload: CommentCreate,
-    current_user: MockUser = Depends(get_current_staff),
+    current_user: MockUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     ticket = db.query(Ticket).filter(Ticket.ticket_no == ticket_no).first()
@@ -556,6 +581,9 @@ def add_comment(
 
     if current_user.role == Role.engineer and ticket.assigned_team != current_user.team:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This ticket isn't assigned to your team")
+
+    if current_user.role == Role.user and ticket.author_username != current_user.username:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You can only comment on your own tickets")
 
     if ticket.analytics and not ticket.analytics.first_responded_at:
         ticket.analytics.first_responded_at = datetime.utcnow()
@@ -575,7 +603,7 @@ def add_comment(
 @router.get("/{ticket_no}/comments", response_model=list[CommentOut])
 def list_comments(
     ticket_no: str,
-    current_user: MockUser = Depends(get_current_staff),
+    current_user: MockUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     ticket = db.query(Ticket).filter(Ticket.ticket_no == ticket_no).first()
@@ -584,6 +612,9 @@ def list_comments(
 
     if current_user.role == Role.engineer and ticket.assigned_team != current_user.team:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "This ticket isn't assigned to your team")
+
+    if current_user.role == Role.user and ticket.author_username != current_user.username:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "You can only view comments on your own tickets")
 
     return (
         db.query(TicketComment)

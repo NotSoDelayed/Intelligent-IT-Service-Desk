@@ -42,6 +42,8 @@ class Ticket(Base):
     status = Column(Enum(TicketStatus), default=TicketStatus.open, nullable=False)
     author = Column(String(150), nullable=False)
     author_username = Column(String(150), nullable=False)
+    author_email = Column(String(150), nullable=True)
+    technology_app_item = Column(String(255), nullable=True)
     created_on = Column(DateTime, default=datetime.utcnow, nullable=False)
     ticket_start_date = Column(DateTime, nullable=True)
     ticket_closed_date = Column(DateTime, nullable=True)
@@ -58,6 +60,7 @@ class Ticket(Base):
     difficulty = Column(String(10), nullable=True)
     assigned_team = Column(String(100), nullable=True)
     ai_recommended_steps = Column(JSON, nullable=True)
+    ai_confidence = Column(Integer, nullable=True)  # numerical confidence score
     ai_confidence_level = Column(String(10), nullable=True)  # "Low" / "Medium" / "High"
     ai_confidence_reason = Column(Text, nullable=True)  # one-sentence explanation of the level above
     ai_summary = Column(Text, nullable=True)
