@@ -22,7 +22,7 @@ PRIORITIES = ["P1", "P2", "P3", "P4"]
 DIFFICULTIES = ["Easy", "Medium", "Hard"]
 
 SELF_HELP_NOTE = (
-    "Your ticket has been received and an engineer will look into it."
+    "Your ticket has been received and an engineer will look into it. "
     "In the meantime, here are a few quick steps you can try yourself to resolve it faster."
 )
 
@@ -130,15 +130,15 @@ exact shape:
 Easy = single quick action (~minutes). Medium = routine investigation (~1 hour). \
 Hard = deep troubleshooting, vendor escalation, or hardware replacement (~half a day or more).,
   "suggested_severity": one of ["Low", "Medium", "High", "Urgent"],
-  "assigned_team": short team name responsible for resolving it,
   "recommended_steps": array of 3-5 concrete troubleshooting steps for the ENGINEER, fastest fix first,
   "user_self_help_steps": array of 2-4 simple steps the USER can try themselves while waiting \
 (populate this whenever difficulty is Easy, regardless of priority -- even urgent Easy tickets \
 benefit from a quick self-service first step. Return empty array [] only if difficulty is \
 Medium or Hard),
-  "confidence": integer 0-100 -- how confident you are in this classification given the \
-information available,
-  "confidence_reason": one short sentence explaining WHY you gave that confidence score -- \
+  "confidence": one of ["Low", "Medium", "High"] -- how confident you are in this \
+classification given the information available. Judge this yourself directly -- \
+don't return a number.,
+  "confidence_reason": one short sentence explaining WHY you gave that confidence level -- \
 e.g. what made the ticket clear or ambiguous. Write it for a non-technical reader.,
   "summary": one or two sentence neutral summary of the actual problem
 }
@@ -409,8 +409,24 @@ def classify_ticket(
     user_self_help_steps = raw_self_help[:4] if is_self_help_eligible and raw_self_help else []
     self_help_note = SELF_HELP_NOTE if user_self_help_steps else ""
 
-    raw_confidence = int(data.get("confidence", 60))
-    level = confidence_bucket(raw_confidence)
+    raw_confidence_field = data.get("confidence")
+
+    if isinstance(raw_confidence_field, str) and raw_confidence_field.strip().title() in (
+        "Low", "Medium", "High"
+    ):
+        # AI path: Gemini judged its own confidence directly, same as it does
+        # for priority/category -- no numeric threshold of ours involved.
+        level = raw_confidence_field.strip().title()
+        raw_confidence = {"Low": 30, "Medium": 60, "High": 90}[level]  # kept for internal reference only
+    else:
+        # Rule-based fallback path (or a model that still returned a number
+        # despite instructions): this number comes from OUR OWN transparent,
+        # fully-explainable point system in _rule_based_classify -- bucketing
+        # it isn't reinterpreting a black-box AI judgment, it's just labeling
+        # our own deterministic score.
+        raw_confidence = int(raw_confidence_field) if raw_confidence_field is not None else 60
+        level = confidence_bucket(raw_confidence)
+
     reason = data.get("confidence_reason") or (
         "The AI reported this confidence level based on how clear and specific "
         "the ticket description was."
@@ -420,7 +436,12 @@ def classify_ticket(
         category=category,
         priority=priority,
         difficulty=difficulty,
-        assigned_team=data.get("assigned_team") or TEAMS.get(category, "Service Desk Tier 1"),
+        # Team is ALWAYS derived deterministically from category -- never
+        # taken from the AI's free text. The prompt no longer even asks for
+        # a team name (see SYSTEM_PROMPT above); this is the fix for the
+        # "assigned_team": "Helpdesk" bug, where the AI invented a team name
+        # that didn't match any of the 6 real engineer-login teams.
+        assigned_team=TEAMS.get(category, "Service Desk Tier 1"),
         suggested_severity=data.get("suggested_severity", "Medium"),
         recommended_steps=data.get("recommended_steps", [])[:6],
         user_self_help_steps=user_self_help_steps,
@@ -612,9 +633,9 @@ def _check_duplicate_keywords(
 # SLA / time-budget engine
 # ============================================================
 DIFFICULTY_BASE_MINUTES = {
-    "Easy": 90,     
+    "Easy": 90,
     "Medium": 240,
-    "Hard": 960,   
+    "Hard": 960,
 }
 
 PRIORITY_MULTIPLIER = {
