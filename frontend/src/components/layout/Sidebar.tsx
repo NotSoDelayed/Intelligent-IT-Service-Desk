@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { BarChart3, LayoutDashboard, Settings, TicketCheck, X } from 'lucide-react';
+import { BarChart3, TicketCheck, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSidebar } from './SidebarContext';
 

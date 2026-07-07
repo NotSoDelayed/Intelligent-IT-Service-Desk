@@ -142,7 +142,7 @@ export default function AnalyticsPage() {
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
                       <XAxis dataKey="date" stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
                       <YAxis stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
-                      <Tooltip 
+                      <Tooltip
                         contentStyle={{ backgroundColor: 'var(--popover)', borderColor: 'var(--border)', borderRadius: '8px' }}
                         itemStyle={{ color: 'var(--foreground)' }}
                       />
@@ -170,19 +170,19 @@ export default function AnalyticsPage() {
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
                       <XAxis dataKey="date" stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
                       <YAxis stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
-                      <Tooltip 
+                      <Tooltip
                         contentStyle={{ backgroundColor: 'var(--popover)', borderColor: 'var(--border)', borderRadius: '8px' }}
                         itemStyle={{ color: 'var(--foreground)' }}
                       />
                       <Legend />
-                      <Line 
-                        type="monotone" 
-                        dataKey="median_response" 
-                        name="Median Response" 
-                        stroke="var(--primary)" 
+                      <Line
+                        type="monotone"
+                        dataKey="median_response"
+                        name="Median Response"
+                        stroke="var(--primary)"
                         strokeWidth={2}
                         dot={{ r: 4, fill: 'var(--primary)' }}
-                        activeDot={{ r: 6 }} 
+                        activeDot={{ r: 6 }}
                       />
                     </LineChart>
                   </ResponsiveContainer>
@@ -213,11 +213,11 @@ export default function AnalyticsPage() {
                         label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
                         labelLine={true}
                       >
-                        {data.departments.map((entry, index) => (
+                        {data.departments.map((_entry, index) => (
                           <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                         ))}
                       </Pie>
-                      <Tooltip 
+                      <Tooltip
                         contentStyle={{ backgroundColor: 'var(--popover)', borderColor: 'var(--border)', borderRadius: '8px' }}
                         itemStyle={{ color: 'var(--foreground)' }}
                       />

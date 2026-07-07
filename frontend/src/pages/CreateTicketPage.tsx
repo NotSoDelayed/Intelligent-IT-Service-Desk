@@ -7,7 +7,6 @@ import {
   Bot,
   CheckCircle2,
   ClipboardList,
-  House,
   Lightbulb,
   PlusCircle,
   RotateCcw,

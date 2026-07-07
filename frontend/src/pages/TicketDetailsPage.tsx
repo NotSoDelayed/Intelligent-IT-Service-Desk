@@ -8,7 +8,6 @@ import {
   CalendarDays,
   CheckCircle2,
   Clock3,
-  Fingerprint,
   History,
   RefreshCw,
   RotateCcw,
@@ -32,7 +31,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -102,7 +100,7 @@ export default function TicketDetailsPage({ refreshInterval = REFRESH_INTERVAL_M
         const user = JSON.parse(userStr);
         setIsAdmin(user.username?.startsWith('admin_') ?? false);
       }
-    } catch {}
+    } catch { }
   }, []);
 
   const ticketQuery = useQuery({

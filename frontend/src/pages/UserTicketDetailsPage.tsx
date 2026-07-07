@@ -1,24 +1,15 @@
 import { useMemo, useState, useEffect, useRef, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
-  AlertTriangle,
   AppWindow,
   ArrowLeft,
   Bot,
   CalendarDays,
-  CheckCircle2,
-  Clock3,
-  Fingerprint,
   History,
   Lightbulb,
-  RefreshCw,
-  RotateCcw,
   ShieldCheck,
-  Trash2,
   User,
   UserCog,
-  UserMinus,
-  UserPlus,
 } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -26,20 +17,8 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import {
   ConfirmationDialog,
   ErrorState,
-  MetricCard,
-  MetricCardSkeleton,
   PageHeader,
 } from '@/components/shared';
 import { PriorityBadge } from '@/components/shared/PriorityBadge';
@@ -53,7 +32,6 @@ import {
 } from '@/features/tickets/api/tickets';
 import type { TicketComment, TicketDetailDto } from '@/features/tickets/types';
 import {
-  formatBackendCategory,
   toBackendStatus,
   toUiPriority,
   toUiStatus,
