@@ -49,6 +49,10 @@ export default function UserTicketDetailsPage({ refreshInterval = 5000 }: { refr
     queryKey: ['ticket', id],
     queryFn: () => getTicket(id ?? ''),
     enabled: Boolean(id),
+    retry: (failureCount, error: any) => {
+      if (error?.response?.status === 404) return false;
+      return failureCount < 2;
+    },
     refetchInterval: (query) => {
       return query.state.data && !query.state.data.category ? refreshInterval : false;
     }
@@ -58,6 +62,10 @@ export default function UserTicketDetailsPage({ refreshInterval = 5000 }: { refr
     queryKey: ['ticket-comments', id],
     queryFn: () => getTicketComments(id ?? ''),
     enabled: Boolean(id),
+    retry: (failureCount, error: any) => {
+      if (error?.response?.status === 404) return false;
+      return failureCount < 2;
+    },
     refetchInterval: () => {
       const t = queryClient.getQueryData<TicketDetailDto>(['ticket', id]);
       return t && !t.category ? refreshInterval : false;
@@ -234,29 +242,51 @@ function TicketDetailsContent({
             </div>
           </CardHeader>
         </Card>
+        {(ticket.self_help_note || (ticket.user_self_help_steps && ticket.user_self_help_steps.length > 0)) && (
+          <Card>
+            <CardHeader className="p-6">
+              <CardTitle className="flex items-center gap-2">
+                <Lightbulb className="size-4 text-muted-foreground" />
+                Self Help Suggestions
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4 text-sm p-6 pt-0">
+              {ticket.self_help_note && <p className="text-muted-foreground">{ticket.self_help_note}</p>}
+              {ticket.user_self_help_steps && ticket.user_self_help_steps.length > 0 && (
+                <ol className="mt-3 space-y-2 pl-5 text-foreground list-decimal">
+                  {ticket.user_self_help_steps.map((step) => (
+                    <li key={step}>{step}</li>
+                  ))}
+                </ol>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader className="p-6">
             <CardTitle>Conversation & Timeline</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 p-6 pt-0">
-            <div className="space-y-3 rounded-xl border border-border bg-muted/20 p-2">
-              <Textarea
-                placeholder="Type your comment here..."
-                value={newComment}
-                onChange={(e) => setNewComment(e.target.value)}
-                disabled={isAddingComment}
-                className="min-h-[100px] resize-none bg-background"
-              />
-              <div className="flex justify-end">
-                <Button
-                  onClick={handleAddComment}
-                  disabled={!newComment.trim() || isAddingComment}
-                >
-                  Add Comment
-                </Button>
+            {ticket.status !== 'Closed' && (
+              <div className="space-y-3 rounded-xl border border-border bg-muted/20 p-2">
+                <Textarea
+                  placeholder="Type your comment here..."
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  disabled={isAddingComment}
+                  className="min-h-[100px] resize-none bg-background"
+                />
+                <div className="flex justify-end">
+                  <Button
+                    onClick={handleAddComment}
+                    disabled={!newComment.trim() || isAddingComment}
+                  >
+                    Add Comment
+                  </Button>
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="flex items-center gap-2 text-sm font-medium text-foreground pt-2">
               <History className="size-4 text-muted-foreground" />
@@ -300,30 +330,9 @@ function TicketDetailsContent({
             <DetailRow icon={<User className="size-4" />} label="Requester" value={ticket.author} />
             <DetailRow icon={<UserCog className="size-4" />} label="Assigned Engineer" value={ticket.assigned_engineer ?? 'Unassigned'} />
             <DetailRow icon={<AppWindow className="size-4" />} label="Technology / App" value={ticket.technology_app_item || 'Unknown'} />
-            <DetailRow icon={<ShieldCheck className="size-4" />} label="AI Confidence" value={ticket.ai_confidence_level ? ticket.ai_confidence_level : 'n/a'} />
           </CardContent>
         </Card>
 
-        {(ticket.self_help_note || (ticket.user_self_help_steps && ticket.user_self_help_steps.length > 0)) && (
-          <Card>
-            <CardHeader className="p-6">
-              <CardTitle className="flex items-center gap-2">
-                <Lightbulb className="size-4 text-muted-foreground" />
-                Self Help Suggestions
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4 text-sm p-6 pt-0">
-              {ticket.self_help_note && <p className="text-muted-foreground">{ticket.self_help_note}</p>}
-              {ticket.user_self_help_steps && ticket.user_self_help_steps.length > 0 && (
-                <ol className="mt-3 space-y-2 pl-5 text-foreground list-decimal">
-                  {ticket.user_self_help_steps.map((step) => (
-                    <li key={step}>{step}</li>
-                  ))}
-                </ol>
-              )}
-            </CardContent>
-          </Card>
-        )}
       </div>
     </div>
   );

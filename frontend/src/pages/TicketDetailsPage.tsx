@@ -107,6 +107,10 @@ export default function TicketDetailsPage({ refreshInterval = REFRESH_INTERVAL_M
     queryKey: ['ticket', id],
     queryFn: () => getTicket(id ?? ''),
     enabled: Boolean(id),
+    retry: (failureCount, error: any) => {
+      if (error?.response?.status === 404) return false;
+      return failureCount < 3;
+    },
     refetchInterval: (query) => {
       return query.state.data && !query.state.data.category ? refreshInterval : false;
     }
@@ -116,6 +120,10 @@ export default function TicketDetailsPage({ refreshInterval = REFRESH_INTERVAL_M
     queryKey: ['ticket-comments', id],
     queryFn: () => getTicketComments(id ?? ''),
     enabled: Boolean(id),
+    retry: (failureCount, error: any) => {
+      if (error?.response?.status === 404) return false;
+      return failureCount < 3;
+    },
     refetchInterval: () => {
       const t = queryClient.getQueryData<TicketDetailDto>(['ticket', id]);
       return t && !t.category ? refreshInterval : false;
@@ -547,26 +555,54 @@ function TicketDetailsContent({
 
         <Card>
           <CardHeader className="p-6">
+            <CardTitle>AI Summary & Recommendations</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 text-sm p-6 pt-0">
+            <div className="rounded-xl border border-border bg-muted/40 p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Summary</p>
+              <p className="mt-2 text-sm text-foreground">
+                {ticket.ai_summary ?? 'No AI summary is available for this ticket yet.'}
+              </p>
+            </div>
+            <div className="rounded-xl border border-border bg-muted/20 p-4">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Recommended Steps</p>
+              {ticket.ai_recommended_steps && ticket.ai_recommended_steps.length > 0 ? (
+                <ol className="mt-3 space-y-2 pl-5 text-sm text-foreground list-decimal">
+                  {ticket.ai_recommended_steps.map((step) => (
+                    <li key={step}>{step}</li>
+                  ))}
+                </ol>
+              ) : (
+                <p className="mt-2 text-sm text-muted-foreground">No recommended steps available.</p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="p-6">
             <CardTitle>Conversation & Timeline</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 p-6 pt-0">
-            <div className="space-y-3 rounded-xl border border-border bg-muted/20 p-2">
-              <Textarea
-                placeholder="Type your comment here..."
-                value={newComment}
-                onChange={(e) => setNewComment(e.target.value)}
-                disabled={isAddingComment}
-                className="min-h-[100px] resize-none bg-background"
-              />
-              <div className="flex justify-end">
-                <Button
-                  onClick={handleAddComment}
-                  disabled={!newComment.trim() || isAddingComment}
-                >
-                  Add Comment
-                </Button>
+            {ticket.status !== 'Closed' && (
+              <div className="space-y-3 rounded-xl border border-border bg-muted/20 p-2">
+                <Textarea
+                  placeholder="Type your comment here..."
+                  value={newComment}
+                  onChange={(e) => setNewComment(e.target.value)}
+                  disabled={isAddingComment}
+                  className="min-h-[100px] resize-none bg-background"
+                />
+                <div className="flex justify-end">
+                  <Button
+                    onClick={handleAddComment}
+                    disabled={!newComment.trim() || isAddingComment}
+                  >
+                    Add Comment
+                  </Button>
+                </div>
               </div>
-            </div>
+            )}
 
             <div className="flex items-center gap-2 text-sm font-medium text-foreground pt-2">
               <History className="size-4 text-muted-foreground" />
@@ -608,13 +644,19 @@ function TicketDetailsContent({
             icon={<Clock3 className="size-4" />}
             description={ticket.due_by ? `Due ${formatDateTime(ticket.due_by)}` : 'No due date assigned'}
           />
-          <MetricCard
-            title="AI Confidence"
-            value={ticket.ai_confidence_level ? ticket.ai_confidence_level : 'n/a'}
-            icon={<ShieldCheck className="size-4" />}
-            description={ticket.ai_summary ? 'Classifier summary available' : 'No summary available'}
-          />
         </div>
+
+        <Card>
+          <CardHeader className="p-6">
+            <CardTitle>AI Analysis</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4 text-sm p-6 pt-0">
+            <DetailRow label="Confidence" value={ticket.ai_confidence_level ? ticket.ai_confidence_level : 'n/a'} />
+            <DetailRow label="Suggested Category" value={formatBackendCategory(ticket.category)} />
+            <DetailRow label="Suggested Priority" value={ticket.priority ?? 'Unknown'} />
+            <DetailRow label="Difficulty" value={ticket.difficulty ?? 'Unknown'} />
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader className="p-6">
@@ -627,36 +669,6 @@ function TicketDetailsContent({
             <DetailRow icon={<UserCog className="size-4" />} label="Assigned Team" value={ticket.assigned_team ?? 'Unassigned'} />
             <DetailRow icon={<AlertTriangle className="size-4" />} label="Severity" value={ticket.severity} />
             <DetailRow icon={<AppWindow className="size-4" />} label="Technology / App" value={ticket.technology_app_item || 'Unknown'} />
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="p-6">
-            <CardTitle>AI Analysis</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4 text-sm p-6 pt-0">
-            <DetailRow label="Suggested Category" value={formatBackendCategory(ticket.category)} />
-            <DetailRow label="Suggested Priority" value={ticket.priority ?? 'Unknown'} />
-            <DetailRow label="Difficulty" value={ticket.difficulty ?? 'Unknown'} />
-            <DetailRow label="Confidence" value={ticket.ai_confidence_level ? ticket.ai_confidence_level : 'n/a'} />
-            <div className="rounded-xl border border-border bg-muted/40 p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Summary</p>
-              <p className="mt-2 text-sm text-foreground">
-                {ticket.ai_summary ?? 'No AI summary is available for this ticket yet.'}
-              </p>
-            </div>
-            <div className="rounded-xl border border-border bg-muted/20 p-4">
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Recommended Steps</p>
-              {ticket.ai_recommended_steps && ticket.ai_recommended_steps.length > 0 ? (
-                <ol className="mt-3 space-y-2 pl-5 text-sm text-foreground list-decimal">
-                  {ticket.ai_recommended_steps.map((step) => (
-                    <li key={step}>{step}</li>
-                  ))}
-                </ol>
-              ) : (
-                <p className="mt-2 text-sm text-muted-foreground">No recommended steps available.</p>
-              )}
-            </div>
           </CardContent>
         </Card>
       </div>
