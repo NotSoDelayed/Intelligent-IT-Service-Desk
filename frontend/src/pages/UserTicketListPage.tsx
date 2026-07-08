@@ -1,12 +1,8 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowUpDown,
-  ClipboardList,
-  Clock3,
   ChevronDown,
-  TicketCheck,
-  TriangleAlert,
   Users,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -18,7 +14,7 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { DataTable, EmptyState, FilterPanel, MetricCard, PageHeader, SearchBar } from '@/components/shared';
+import { DataTable, EmptyState, FilterPanel, PageHeader, SearchBar } from '@/components/shared';
 import { CategoryBadge } from '@/components/shared/CategoryBadge';
 import { PriorityBadge } from '@/components/shared/PriorityBadge';
 import { StatusBadge } from '@/components/shared/StatusBadge';
