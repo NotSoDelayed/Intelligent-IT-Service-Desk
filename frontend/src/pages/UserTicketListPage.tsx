@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   ArrowUpDown,
@@ -70,11 +70,26 @@ export default function UserTicketListPage() {
   const [category, setCategory] = useState<TicketCategory | 'all'>('all');
   const [sort, setSort] = useState<SortKey>('newest');
   const [page, setPage] = useState(1);
+  const [loggedInUser, setLoggedInUser] = useState<string>('');
+
+  useEffect(() => {
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr);
+        if (user.username) {
+          setLoggedInUser(user.username);
+        }
+      } catch (e) {
+        console.error('Failed to parse user from localStorage', e);
+      }
+    }
+  }, []);
 
   const hasFilters = search.trim() !== '' || status !== 'all' || priority !== 'all' || category !== 'all';
 
   const { data } = useQuery({
-    queryKey: ['ticket-list', { search, status, priority, category, sort, page }],
+    queryKey: ['ticket-list', { search, status, priority, category, sort, page, loggedInUser }],
     queryFn: () => listTickets({
       search: search.trim() || undefined,
       status: status === 'all' ? undefined : toBackendStatus(status),
@@ -83,7 +98,9 @@ export default function UserTicketListPage() {
       sort,
       page,
       limit: pageSize,
+      author_username: loggedInUser || undefined,
     }),
+    enabled: !!loggedInUser, // Only fetch when we have the user
   });
 
   const filteredTickets = data?.tickets ?? [];

@@ -41,6 +41,7 @@ export interface TicketListParams {
   search?: string;
   page?: number;
   limit?: number;
+  author_username?: string;
 }
 
 export interface TicketCommentCreatePayload {
