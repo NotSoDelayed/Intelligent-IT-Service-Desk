@@ -88,7 +88,9 @@ def background_process_ticket_creation(ticket_no: str, username: str):
 
         # Self-service (P4 + Easy) tickets can still be routed to a team so
         # engineers can see them in case the user needs further help.
-        is_self_service = final_priority == "P4" and result.difficulty == "Easy"
+        # (Whether a ticket qualifies for the self-service *shortcut*
+        # buttons is now separately gated on confidence -- see
+        # Ticket.is_self_service in models.py.)
         ticket.assigned_team = result.assigned_team
 
         ticket.ai_recommended_steps = result.recommended_steps
@@ -173,7 +175,6 @@ def background_reanalyze_ticket(ticket_no: str):
 
         sla = compute_sla(final_priority, result.difficulty, ticket.created_on)
 
-        is_self_service = final_priority == "P4" and result.difficulty == "Easy"
         spam_flagged = is_probable_spam(ticket.title, ticket.content)
 
         ticket.category = result.category
@@ -359,10 +360,10 @@ def get_ticket(
 
 # ------------------------------------------------------------------
 # POST /tickets/{ticket_no}/complete  -- PUBLIC (ticket owner only)
-# Self-service tickets only (priority P4 + difficulty Easy, i.e. no team
-# was ever assigned -- see Ticket.is_self_service). One click, no message
-# needed: the user tried the self-help steps and it worked. Moves the
-# ticket to Resolved; an admin closes it from there.
+# Self-service tickets only (priority P4 + difficulty Easy + confidence
+# not Low -- see Ticket.is_self_service). One click, no message needed:
+# the user tried the self-help steps and it worked. Moves the ticket to
+# Resolved; an admin closes it from there.
 # ------------------------------------------------------------------
 @router.post("/{ticket_no}/complete", response_model=TicketTrackOut)
 def mark_self_service_complete(
@@ -380,7 +381,7 @@ def mark_self_service_complete(
     if not ticket.is_self_service:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
-            "This action is only available for self-service (P4 + Easy) tickets",
+            "This action is only available for self-service (P4 + Easy, confidently classified) tickets",
         )
 
     if ticket.status in (TicketStatus.resolved, TicketStatus.closed):
@@ -401,13 +402,11 @@ def mark_self_service_complete(
 
 # ------------------------------------------------------------------
 # POST /tickets/{ticket_no}/escalate  -- PUBLIC (ticket owner only)
-# The counterpart to /complete. Self-service tickets only (P4 + Easy).
-# The user tried the self-help steps and it didn't work -- this bumps
-# the ticket to a real priority/difficulty, assigns it a real team
-# (it had none before, since self-service tickets skip team routing),
+# The counterpart to /complete. Self-service tickets only (P4 + Easy +
+# confidence not Low). The user tried the self-help steps and it
+# didn't work -- this bumps the ticket to a real priority/difficulty
 # and recalculates the SLA. From here it behaves like any normal
-# engineer-handled ticket: an engineer from that team sees it in their
-# queue and self-claims it the usual way.
+# engineer-handled ticket.
 # ------------------------------------------------------------------
 @router.post("/{ticket_no}/escalate", response_model=TicketTrackOut)
 def escalate_self_service_ticket(
@@ -425,7 +424,7 @@ def escalate_self_service_ticket(
     if not ticket.is_self_service:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
-            "This action is only available for self-service (P4 + Easy) tickets",
+            "This action is only available for self-service (P4 + Easy, confidently classified) tickets",
         )
 
     if ticket.status in (TicketStatus.resolved, TicketStatus.closed):
@@ -528,7 +527,7 @@ def update_ticket(
         if new_eng != ticket.assigned_engineer:
             ticket.assigned_engineer = new_eng
             changes.append(f"assigned engineer: {new_eng or 'Unassigned'}")
-            
+
             # If the engineer is set, automatically route the ticket to their team
             from auth import get_team_from_engineer_name
             if new_eng:

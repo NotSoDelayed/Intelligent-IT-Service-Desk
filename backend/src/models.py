@@ -100,8 +100,22 @@ class Ticket(Base):
 
     @property
     def is_self_service(self) -> bool:
-        """True when the ticket qualifies as self-service (P4 + Easy) -- no team assignment needed."""
-        return self.priority == "P4" and self.difficulty == "Easy"
+        """
+        True when the ticket qualifies for the self-resolve shortcut
+        (/complete and /escalate): priority P4 + difficulty Easy, AND the
+        AI wasn't just guessing -- if confidence was Low, the
+        classification itself might be wrong, so we don't let the user
+        prematurely self-close (or self-escalate) something that was
+        never confidently classified as low-effort in the first place.
+        The ticket still gets a real team either way (see
+        background_process_ticket_creation) -- this only gates the
+        self-service shortcut buttons, not team routing.
+        """
+        return (
+            self.priority == "P4"
+            and self.difficulty == "Easy"
+            and self.ai_confidence_level != "Low"
+        )
 
     @property
     def is_trending(self) -> bool:

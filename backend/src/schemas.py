@@ -29,7 +29,10 @@ class TicketCreate(BaseModel):
     headers) -- this form only needs the actual issue details.
     """
     title: str = Field(..., min_length=4, max_length=255)
-    content: str = Field(..., min_length=10)
+    content: str = Field(
+        ..., min_length=20,
+        description="Please provide at least 20 characters so the AI can accurately analyze your issue.",
+    )
     user_priority: int = Field(default=3, ge=1, le=5)
     technology_app_item: str = Field(..., min_length=2, max_length=255)
 
