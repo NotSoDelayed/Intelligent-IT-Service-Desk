@@ -1,3 +1,4 @@
+from sqlalchemy import Boolean
 import enum
 import uuid
 from datetime import datetime
@@ -77,6 +78,9 @@ class Ticket(Base):
 
     # --- Trend detection result ---
     trend_warning = Column(Text, nullable=True)  # set if a spike in same-category tickets was detected
+
+    # --- Spam detection result ---
+    is_spam = Column(Boolean, default=False)  # set if a likely spam ticket was found
 
     comments = relationship("TicketComment", back_populates="ticket", cascade="all, delete-orphan")
     analytics = relationship(

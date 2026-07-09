@@ -274,6 +274,15 @@ function TicketDetailsContent({
             </AlertDescription>
           </Alert>
         )}
+        {ticket.is_spam && (
+          <Alert variant="destructive">
+            <AlertTriangle className="size-4" />
+            <AlertTitle>Potential Spam Detected</AlertTitle>
+            <AlertDescription className="mt-1">
+              This ticket has been flagged by the automated system as potential spam and is awaiting manual administrator review.
+            </AlertDescription>
+          </Alert>
+        )}
         <Card>
           <CardHeader className="space-y-4 p-6">
             <div className="flex flex-wrap items-start justify-between gap-4">

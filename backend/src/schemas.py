@@ -173,6 +173,9 @@ class TicketOut(BaseModel):
     # Trend detection (populated if a spike in same-category tickets was found)
     trend_warning: str | None = None
 
+    # Spam detection
+    is_spam: bool = False
+
 
 class TicketListOut(BaseModel):
     """Lighter payload for table/list views."""
@@ -245,6 +248,7 @@ class TicketTrackOut(BaseModel):
     duplicate_warning: str | None = None
     duplicate_ticket_no: str | None = None
     trend_warning: str | None = None
+    is_spam: bool = False
 
     # Self-Diagnosis shown on tracking page too
     user_self_help_steps: list[str] | None = None

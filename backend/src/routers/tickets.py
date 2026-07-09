@@ -80,6 +80,7 @@ def background_process_ticket_creation(ticket_no: str, username: str):
         )
         ticket.duplicate_ticket_no = duplicate_match['ticket_no'] if duplicate_match else None
         spam_flagged = is_probable_spam(ticket.title, ticket.content)
+        ticket.is_spam = spam_flagged
 
         ticket.severity = Severity(final_severity) if final_severity in Severity._value2member_map_ else Severity.medium
         ticket.category = result.category

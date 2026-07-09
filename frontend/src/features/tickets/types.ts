@@ -114,4 +114,5 @@ export interface TicketDetailDto {
   sla_status: string | null;
   duplicate_warning: string | null;
   duplicate_ticket_no: string | null;
+  is_spam: boolean;
 }
