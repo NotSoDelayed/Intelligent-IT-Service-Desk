@@ -241,6 +241,7 @@ class TicketTrackOut(BaseModel):
 
     ai_confidence: int | None = None
     ai_confidence_level: str | None = None
+    ai_confidence_reason: str | None = None
     ai_summary: str | None = None
     duplicate_warning: str | None = None
     trend_warning: str | None = None

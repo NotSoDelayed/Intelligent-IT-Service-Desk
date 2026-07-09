@@ -106,6 +106,7 @@ export interface TicketDetailDto {
   ai_recommended_steps: string[] | null;
   ai_confidence: number | null;
   ai_confidence_level: string | null;
+  ai_confidence_reason: string | null;
   ai_summary: string | null;
   user_self_help_steps: string[] | null;
   self_help_note: string | null;

@@ -657,6 +657,9 @@ function TicketDetailsContent({
           </CardHeader>
           <CardContent className="space-y-4 text-sm p-6 pt-0">
             <DetailRow label="Confidence" value={ticket.ai_confidence_level ? ticket.ai_confidence_level : 'n/a'} />
+            {ticket.ai_confidence_reason && (
+              <DetailRow label="Reasoning" value={ticket.ai_confidence_reason} />
+            )}
             <DetailRow label="Suggested Category" value={formatBackendCategory(ticket.category)} />
             <DetailRow label="Suggested Priority" value={ticket.priority ?? 'Unknown'} />
             <DetailRow label="Difficulty" value={ticket.difficulty ?? 'Unknown'} />

@@ -335,6 +335,12 @@ function TicketDetailsContent({
             <DetailRow icon={<User className="size-4" />} label="Requester" value={ticket.author} />
             <DetailRow icon={<UserCog className="size-4" />} label="Assigned Engineer" value={ticket.assigned_engineer ?? 'Unassigned'} />
             <DetailRow icon={<AppWindow className="size-4" />} label="Technology / App" value={ticket.technology_app_item || 'Unknown'} />
+            {ticket.ai_confidence_level && (
+              <DetailRow icon={<ShieldCheck className="size-4" />} label="AI Confidence" value={ticket.ai_confidence_level} />
+            )}
+            {ticket.ai_confidence_reason && (
+              <DetailRow icon={<Lightbulb className="size-4" />} label="Reasoning" value={ticket.ai_confidence_reason} />
+            )}
           </CardContent>
         </Card>
 
