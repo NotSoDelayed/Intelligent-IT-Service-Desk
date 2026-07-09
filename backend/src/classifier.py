@@ -121,6 +121,15 @@ The user urgency rating is ONE input -- use your judgment. If the description \
 doesn't match the rating (e.g. user says 5 but issue is trivial, or user says 1 \
 but team is down), override it based on the actual content.
 
+Watch for descriptions that are exaggerated, sarcastic, or physically implausible \
+(e.g. a laptop "catching fire and exploding" combined with jokes, laughter, or \
+demands like "pay me" / "before I sue you") -- these read as trolling, not a \
+genuine report, even if they contain a real technical keyword like "laptop" or \
+"VPN". Don't let a single matched keyword override obviously non-genuine \
+framing. When a ticket looks like this, keep priority no higher than P3, cap \
+confidence at Low, and say why in confidence_reason (e.g. "the description \
+contains exaggerated/implausible claims that don't read as a genuine report").
+
 Respond with ONLY a raw JSON object (no markdown fences, no preamble) with this \
 exact shape:
 {
