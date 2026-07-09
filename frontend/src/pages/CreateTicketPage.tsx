@@ -12,10 +12,12 @@ import {
   RotateCcw,
   ShieldCheck,
   User,
+  AlertTriangle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -345,6 +347,25 @@ function TicketCreatedResult({
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1.35fr)_360px]">
       <div className="space-y-6">
+        {ticket.duplicate_warning && (
+          <Alert variant="destructive">
+            <AlertTriangle className="size-4" />
+            <AlertTitle>Possible Duplicate Detected</AlertTitle>
+            <AlertDescription className="mt-1">
+              {ticket.duplicate_warning}
+              {ticket.duplicate_ticket_no && (
+                <div className="mt-2">
+                  <Button variant="outline" size="sm" asChild className="bg-destructive text-destructive-foreground hover:bg-destructive/90 border-destructive-foreground/20">
+                    <Link to={`/tickets/${ticket.duplicate_ticket_no}`}>
+                      View Original Ticket
+                      <ArrowRight className="ml-2 size-3.5" />
+                    </Link>
+                  </Button>
+                </div>
+              )}
+            </AlertDescription>
+          </Alert>
+        )}
         <Card>
           <CardHeader className="p-6">
             <CardTitle className="flex items-center gap-2">

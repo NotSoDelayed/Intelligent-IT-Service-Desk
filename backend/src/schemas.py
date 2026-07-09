@@ -168,6 +168,7 @@ class TicketOut(BaseModel):
 
     # Duplicate detection (populated if a similar open ticket already exists)
     duplicate_warning: str | None = None
+    duplicate_ticket_no: str | None = None
 
     # Trend detection (populated if a spike in same-category tickets was found)
     trend_warning: str | None = None
@@ -242,6 +243,7 @@ class TicketTrackOut(BaseModel):
     ai_confidence_reason: str | None = None
     ai_summary: str | None = None
     duplicate_warning: str | None = None
+    duplicate_ticket_no: str | None = None
     trend_warning: str | None = None
 
     # Self-Diagnosis shown on tracking page too

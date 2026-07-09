@@ -78,6 +78,7 @@ def background_process_ticket_creation(ticket_no: str, username: str):
             f"Please check before proceeding."
             if duplicate_match else None
         )
+        ticket.duplicate_ticket_no = duplicate_match['ticket_no'] if duplicate_match else None
         spam_flagged = is_probable_spam(ticket.title, ticket.content)
 
         ticket.severity = Severity(final_severity) if final_severity in Severity._value2member_map_ else Severity.medium
@@ -306,8 +307,6 @@ def list_tickets(
     else:
         if status_filter:
             q = q.filter(Ticket.status == status_filter)
-        else:
-            q = q.filter(Ticket.status != TicketStatus.flagged)
         if assigned_team:
             q = q.filter(Ticket.assigned_team == assigned_team)
 

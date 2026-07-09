@@ -73,6 +73,7 @@ class Ticket(Base):
 
     # --- Duplicate detection result ---
     duplicate_warning = Column(Text, nullable=True)  # set if a similar open ticket was found
+    duplicate_ticket_no = Column(String(40), nullable=True)  # explicit reference to the duplicate ticket
 
     # --- Trend detection result ---
     trend_warning = Column(Text, nullable=True)  # set if a spike in same-category tickets was detected

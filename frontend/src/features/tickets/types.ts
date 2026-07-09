@@ -112,4 +112,6 @@ export interface TicketDetailDto {
   sla_minutes: number | null;
   due_by: string | null;
   sla_status: string | null;
+  duplicate_warning: string | null;
+  duplicate_ticket_no: string | null;
 }

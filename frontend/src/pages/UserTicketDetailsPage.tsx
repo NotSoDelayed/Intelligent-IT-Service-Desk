@@ -10,9 +10,12 @@ import {
   ShieldCheck,
   User,
   UserCog,
+  AlertTriangle,
+  ArrowRight,
 } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -252,6 +255,25 @@ function TicketDetailsContent({
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1.65fr)_minmax(320px,1fr)]">
       <div className="space-y-6">
+        {ticket.duplicate_warning && (
+          <Alert variant="destructive">
+            <AlertTriangle className="size-4" />
+            <AlertTitle>Possible Duplicate Detected</AlertTitle>
+            <AlertDescription className="mt-1">
+              {ticket.duplicate_warning}
+              {ticket.duplicate_ticket_no && (
+                <div className="mt-2">
+                  <Button variant="outline" size="sm" asChild className="bg-destructive text-destructive-foreground hover:bg-destructive/90 border-destructive-foreground/20">
+                    <Link to={`/tickets/${ticket.duplicate_ticket_no}`}>
+                      View Original Ticket
+                      <ArrowRight className="ml-2 size-3.5" />
+                    </Link>
+                  </Button>
+                </div>
+              )}
+            </AlertDescription>
+          </Alert>
+        )}
         <Card>
           <CardHeader className="space-y-4 p-6">
             <div className="flex flex-wrap items-start justify-between gap-4">
