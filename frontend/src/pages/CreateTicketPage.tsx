@@ -118,6 +118,11 @@ export default function CreateTicketPage({ refreshInterval = 5000 }: { refreshIn
         setErrors((current) => ({ ...current, [field]: undefined }));
       };
 
+  const handleBlur = (field: keyof FormState) => () => {
+    const nextErrors = validateForm(form);
+    setErrors((current) => ({ ...current, [field]: nextErrors[field] }));
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const nextErrors = validateForm(form);
@@ -182,6 +187,7 @@ export default function CreateTicketPage({ refreshInterval = 5000 }: { refreshIn
                   <Input
                     value={form.name}
                     onChange={handleChange('name')}
+                    onBlur={handleBlur('name')}
                     placeholder="John Doe"
                     autoComplete="name"
                     aria-invalid={Boolean(errors.name)}
@@ -204,6 +210,7 @@ export default function CreateTicketPage({ refreshInterval = 5000 }: { refreshIn
                     <Input
                       value={form.title}
                       onChange={handleChange('title')}
+                      onBlur={handleBlur('title')}
                       placeholder="VPN disconnects during client calls"
                       aria-invalid={Boolean(errors.title)}
                       disabled={createMutation.isPending}
@@ -213,6 +220,7 @@ export default function CreateTicketPage({ refreshInterval = 5000 }: { refreshIn
                     <Input
                       value={form.technology_app_item}
                       onChange={handleChange('technology_app_item')}
+                      onBlur={handleBlur('technology_app_item')}
                       placeholder="PC, Zoom, VPN, Printer, etc..."
                       aria-invalid={Boolean(errors.technology_app_item)}
                       disabled={createMutation.isPending}
@@ -221,14 +229,20 @@ export default function CreateTicketPage({ refreshInterval = 5000 }: { refreshIn
                 </div>
 
                 <FormField label="Description" error={errors.content}>
-                  <Textarea
-                    value={form.content}
-                    onChange={handleChange('content')}
-                    placeholder="Briefly describe the issue with as much supporting evidence as possible (screenshot, error message, etc)"
-                    className="min-h-36"
-                    aria-invalid={Boolean(errors.content)}
-                    disabled={createMutation.isPending}
-                  />
+                  <div className="relative">
+                    <Textarea
+                      value={form.content}
+                      onChange={handleChange('content')}
+                      onBlur={handleBlur('content')}
+                      placeholder="Briefly describe the issue with as much supporting evidence as possible (screenshot, error message, etc)"
+                      className="min-h-36 pb-6"
+                      aria-invalid={Boolean(errors.content)}
+                      disabled={createMutation.isPending}
+                    />
+                    <div className={`absolute bottom-2 right-3 text-xs ${form.content.length < 100 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                      {form.content.length} / 100 min
+                    </div>
+                  </div>
                 </FormField>
 
                 <FormField label="Urgency" error={errors.user_priority}>
@@ -443,11 +457,14 @@ function validateForm(form: FormState): FormErrors {
   if (form.name.trim().length < 2) {
     errors.name = 'Enter at least 2 characters.';
   }
-  if (form.title.trim().length < 4) {
-    errors.title = 'Enter at least 4 characters.';
+  if (form.title.trim().length < 10) {
+    errors.title = 'Enter at least 10 characters.';
   }
-  if (form.content.trim().length < 10) {
-    errors.content = 'Enter at least 10 characters.';
+  if (form.technology_app_item.trim().length < 2) {
+    errors.technology_app_item = 'Enter at least 2 characters.';
+  }
+  if (form.content.trim().length < 100) {
+    errors.content = 'Enter at least 100 characters.';
   }
   if (!form.technology_app_item.trim()) {
     errors.technology_app_item = 'Technology, app, or item is required.';
