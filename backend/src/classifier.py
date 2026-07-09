@@ -2,6 +2,7 @@ import json
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta
+import re
 
 from config import settings
 
@@ -483,6 +484,63 @@ def is_probable_spam(title: str, content: str) -> bool:
     compact = text.lower().replace(" ", "")
     if len(compact) > 5 and len(set(compact)) <= 2:
         return True
+
+    # --- Additional lightweight gibberish heuristics ---
+    # 1) If many tokens look non-wordlike (no vowels or extremely short),
+    #    treat as probable spam.
+    words = re.findall(r"[a-z]+", text.lower())
+    if words:
+        vowels = set("aeiou")
+        non_wordlike = 0
+        short_words = 0
+        bigram_matches = 0
+        total_bigrams = 0
+
+        COMMON_BIGRAMS = {
+            "th",
+            "he",
+            "in",
+            "er",
+            "an",
+            "re",
+            "on",
+            "at",
+            "en",
+            "nd",
+            "ti",
+            "es",
+            "or",
+            "te",
+            "of",
+            "ed",
+        }
+
+        for w in words:
+            if len(w) <= 2:
+                short_words += 1
+            if not any(ch in vowels for ch in w):
+                non_wordlike += 1
+
+            # bigram signal: real English words tend to contain common digrams
+            if len(w) >= 2:
+                for i in range(len(w) - 1):
+                    total_bigrams += 1
+                    if w[i : i + 2] in COMMON_BIGRAMS:
+                        bigram_matches += 1
+
+        word_count = len(words)
+        non_wordlike_ratio = non_wordlike / word_count
+        short_word_ratio = short_words / word_count
+        bigram_ratio = (bigram_matches / total_bigrams) if total_bigrams else 0.0
+
+        # Heuristic thresholds tuned to avoid false positives on short-but-real
+        # text while catching common keyboard-gibberish and random-letter spam.
+        if non_wordlike_ratio > 0.6:
+            return True
+        if short_word_ratio > 0.6 and word_count > 3:
+            return True
+        if bigram_ratio < 0.25 and word_count >= 4:
+            return True
 
     return False
 
