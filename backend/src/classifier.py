@@ -370,7 +370,7 @@ def _rule_based_classify(title: str, content: str, user_priority: int = 3) -> di
         "priority": priority,
         "difficulty": difficulty,
         "suggested_severity": severity,
-        "assigned_team": TEAMS.get(category, "Service Desk Tier 1"),
+        "assigned_team": TEAMS.get(category, "General Team"),
         "recommended_steps": steps_map.get(category, steps_map["Other"]),
         "user_self_help_steps": user_self_help_steps,
         "confidence": score,
@@ -441,7 +441,7 @@ def classify_ticket(
         # a team name (see SYSTEM_PROMPT above); this is the fix for the
         # "assigned_team": "Helpdesk" bug, where the AI invented a team name
         # that didn't match any of the 6 real engineer-login teams.
-        assigned_team=TEAMS.get(category, "Service Desk Tier 1"),
+        assigned_team=TEAMS.get(category, "General Team"),
         suggested_severity=data.get("suggested_severity", "Medium"),
         recommended_steps=data.get("recommended_steps", [])[:6],
         user_self_help_steps=user_self_help_steps,

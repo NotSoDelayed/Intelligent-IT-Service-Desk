@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status, Background
 from sqlalchemy.orm import Session
 
 from activity_log import log_activity
-from auth import MockUser, Role, get_current_staff, get_current_user
+from auth import MockUser, Role, get_current_staff, get_current_user, get_engineer_from_team
 from classifier import (
     apply_trend_bump,
     check_duplicate,
@@ -92,6 +92,7 @@ def background_process_ticket_creation(ticket_no: str, username: str):
         # buttons is now separately gated on confidence -- see
         # Ticket.is_self_service in models.py.)
         ticket.assigned_team = result.assigned_team
+        ticket.assigned_engineer = get_engineer_from_team(result.assigned_team)
 
         ticket.ai_recommended_steps = result.recommended_steps
         ticket.ai_confidence = result.confidence
@@ -122,10 +123,11 @@ def background_process_ticket_creation(ticket_no: str, username: str):
             ticket.status = TicketStatus.flagged
 
         hours = round(sla["sla_minutes"] / 60, 1)
+        assign_str = f" (assigned to {ticket.assigned_engineer})" if ticket.assigned_engineer else ""
         log_activity(
             db, ticket, "AI System",
             f"Ticket auto-classified as {result.category} / {final_priority} / "
-            f"{result.difficulty} difficulty, routed to {result.assigned_team}"
+            f"{result.difficulty} difficulty, routed to {result.assigned_team}{assign_str}"
             + f". User urgency: {ticket.user_priority}/5. "
             f"Target resolution: {hours}h by {sla['due_by'].strftime('%b %d, %H:%M UTC')} "
             f"(confidence: {ticket.ai_confidence_level}).",
@@ -440,7 +442,7 @@ def escalate_self_service_ticket(
     ticket.priority = "P3"
     ticket.difficulty = "Medium"
     ticket.severity = Severity.medium
-    ticket.assigned_team = TEAMS.get(ticket.category, "Service Desk Tier 1")
+    ticket.assigned_team = TEAMS.get(ticket.category, "General Team")
 
     sla = compute_sla(ticket.priority, ticket.difficulty, ticket.created_on)
     ticket.sla_minutes = sla["sla_minutes"]

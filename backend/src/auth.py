@@ -114,6 +114,19 @@ def get_team_from_engineer_name(full_name: str) -> str | None:
     return None
 
 
+def get_engineer_from_team(team: str | None) -> str | None:
+    """
+    Looks up the engineer's full name given a team name.
+    Useful for auto-assigning the single engineer responsible for a team.
+    """
+    if not team:
+        return None
+    for username, full_name in FULL_NAMES.items():
+        if get_engineer_team(username) == team:
+            return full_name
+    return None
+
+
 # ------------------------------------------------------------------
 # FastAPI dependencies
 # ------------------------------------------------------------------

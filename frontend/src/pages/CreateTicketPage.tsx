@@ -374,6 +374,7 @@ function TicketCreatedResult({
               <ResultItem label="Severity" value={ticket.severity} />
               <ResultItem label="Difficulty" value={ticket.difficulty ?? 'Unknown'} />
               <ResultItem label="Assigned Team" value={ticket.assigned_team ?? 'Unassigned'} />
+              <ResultItem label="Assigned Engineer" value={ticket.assigned_engineer ?? 'Unassigned'} />
               <ResultItem
                 label="AI Confidence"
                 value={ticket.ai_confidence !== null ? `${ticket.ai_confidence}%` : 'n/a'}
