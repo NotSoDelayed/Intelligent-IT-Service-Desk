@@ -365,8 +365,8 @@ function TicketCreatedResult({
             </div>
 
             <div>
-              <h2 className="text-xl font-semibold tracking-tight">{ticket.title}</h2>
-              <p className="mt-1 text-sm text-muted-foreground">{ticket.ai_summary ?? ticket.content}</p>
+              <h2 className="text-xl font-semibold tracking-tight">Title: {ticket.title}</h2>
+              {/* <p className="mt-1 text-sm text-muted-foreground">{ticket.ai_summary ?? ticket.content}</p> */}
             </div>
 
             <div className="grid gap-3 md:grid-cols-2">
