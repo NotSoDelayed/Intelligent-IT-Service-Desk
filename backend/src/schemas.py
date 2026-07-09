@@ -1,7 +1,8 @@
+import re
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 # ---------- Mock Auth ----------
@@ -30,11 +31,44 @@ class TicketCreate(BaseModel):
     """
     title: str = Field(..., min_length=4, max_length=255)
     content: str = Field(
-        ..., min_length=20,
-        description="Please provide at least 20 characters so the AI can accurately analyze your issue.",
+        ..., min_length=100,
+        description="Please provide at least 100 characters describing your issue in real words "
+                    "(e.g. what happened, what you expected, what error you saw) so the AI can "
+                    "accurately analyze it. Filler text or repeated characters will be rejected.",
     )
     user_priority: int = Field(default=3, ge=1, le=5)
     technology_app_item: str = Field(..., min_length=2, max_length=255)
+
+    @field_validator("content")
+    @classmethod
+    def content_must_be_descriptive(cls, v: str) -> str:
+        """
+        min_length alone only blocks *short* junk -- someone can still pad
+        to 100 chars with "asdasdasd..." or "aaaaaaaaa...". This adds two
+        cheap, no-AI-call checks on top of the length requirement:
+
+        1. At least 8 distinct real words (2+ letters each) -- catches
+           filler that's technically 100 characters but not actual prose.
+        2. No single character makes up more than 40% of the text --
+           catches "xxxxxxxxxx..." / keyboard-mash padding.
+        """
+        words = re.findall(r"[A-Za-z]{2,}", v)
+        distinct_words = {w.lower() for w in words}
+        if len(distinct_words) < 8:
+            raise ValueError(
+                "Please describe your issue in your own words (at least 8 distinct words) "
+                "rather than repeated or filler text."
+            )
+
+        if v:
+            most_common_count = max(v.lower().count(ch) for ch in set(v.lower()) if ch.strip())
+            if most_common_count / len(v) > 0.4:
+                raise ValueError(
+                    "Your description looks like repeated characters rather than real text. "
+                    "Please describe the actual issue."
+                )
+
+        return v
 
 
 class TicketUpdateAdmin(BaseModel):
