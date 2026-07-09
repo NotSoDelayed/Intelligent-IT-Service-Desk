@@ -224,6 +224,7 @@ class TicketTrackOut(BaseModel):
     status: str
     severity: str
     author: str
+    category: str | None = None
     assigned_engineer: str | None = None
     priority: str | None = None
     difficulty: str | None = None
