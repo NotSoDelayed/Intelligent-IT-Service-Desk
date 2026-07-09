@@ -369,7 +369,7 @@ def get_ticket(
 # POST /tickets/{ticket_no}/complete  -- PUBLIC (ticket owner only)
 # Self-service tickets only (priority P4 + difficulty Easy + confidence
 # not Low -- see Ticket.is_self_service). One click, no message needed:
-# the user tried the self-help steps and it worked. Moves the ticket to
+# the user tried the Self-Diagnosis steps and it worked. Moves the ticket to
 # Resolved; an admin closes it from there.
 # ------------------------------------------------------------------
 @router.post("/{ticket_no}/complete", response_model=TicketTrackOut)
@@ -400,7 +400,7 @@ def mark_self_service_complete(
 
     log_activity(
         db, ticket, "User",
-        "User marked the ticket as complete after trying the self-help steps.",
+        "User marked the ticket as complete after trying the Self-Diagnosis steps.",
     )
     db.commit()
     db.refresh(ticket)
@@ -410,7 +410,7 @@ def mark_self_service_complete(
 # ------------------------------------------------------------------
 # POST /tickets/{ticket_no}/escalate  -- PUBLIC (ticket owner only)
 # The counterpart to /complete. Self-service tickets only (P4 + Easy +
-# confidence not Low). The user tried the self-help steps and it
+# confidence not Low). The user tried the Self-Diagnosis steps and it
 # didn't work -- this bumps the ticket to a real priority/difficulty
 # and recalculates the SLA. From here it behaves like any normal
 # engineer-handled ticket.
@@ -450,7 +450,7 @@ def escalate_self_service_ticket(
 
     log_activity(
         db, ticket, "User",
-        f"User reported the self-help steps didn't resolve the issue -- escalated "
+        f"User reported the Self-Diagnosis steps didn't resolve the issue -- escalated "
         f"from {old_priority}/{old_difficulty} to {ticket.priority}/{ticket.difficulty} "
         f"and routed to {ticket.assigned_team}.",
     )

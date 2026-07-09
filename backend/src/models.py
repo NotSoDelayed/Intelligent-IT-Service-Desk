@@ -63,7 +63,7 @@ class Ticket(Base):
     ai_confidence_reason = Column(Text, nullable=True)  # one-sentence explanation of the level above
     ai_summary = Column(Text, nullable=True)
 
-    # --- AI self-help (populated only when P4 + Easy) ---
+    # --- AI Self-Diagnosis (populated only when P4 + Easy) ---
     user_self_help_steps = Column(JSON, nullable=True)   # steps the user can try themselves
     self_help_note = Column(Text, nullable=True)          # explanatory message shown to user
 

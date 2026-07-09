@@ -209,7 +209,7 @@ def _call_gemini(title: str, content: str, user_priority: int = 3) -> dict | Non
             return None  # exhausted retries -- caller falls back to rule-based
 
 
-# Self-help steps for the rule-based fallback, keyed by category.
+# Self-Diagnosis steps for the rule-based fallback, keyed by category.
 # Used whenever difficulty is Easy, regardless of priority.
 SELF_HELP_MAP = {
     "Network": [
@@ -297,7 +297,7 @@ def _rule_based_classify(title: str, content: str, user_priority: int = 3) -> di
     else:
         difficulty = "Medium"
 
-    # Self-help for any Easy ticket regardless of priority
+    # Self-Diagnosis for any Easy ticket regardless of priority
     user_self_help_steps = (
         SELF_HELP_MAP.get(category, SELF_HELP_MAP["Other"])
         if difficulty == "Easy"
@@ -401,7 +401,7 @@ def classify_ticket(
     Option A: user_self_help_steps is populated whenever difficulty is Easy,
     regardless of priority. Even a P1 Easy ticket benefits from a quick
     self-service step while the engineer is being paged. Medium and Hard
-    tickets never get self-help -- too complex for the user to attempt.
+    tickets never get Self-Diagnosis -- too complex for the user to attempt.
     """
     ai_result = _call_gemini(title, content, user_priority)
     data = ai_result if ai_result else _rule_based_classify(
@@ -412,7 +412,7 @@ def classify_ticket(
     priority = data.get("priority") if data.get("priority") in PRIORITIES else "P3"
     difficulty = data.get("difficulty") if data.get("difficulty") in DIFFICULTIES else "Medium"
 
-    # Self-help for any Easy ticket, regardless of priority
+    # Self-Diagnosis for any Easy ticket, regardless of priority
     raw_self_help = data.get("user_self_help_steps", [])
     is_self_help_eligible = difficulty == "Easy"
     user_self_help_steps = raw_self_help[:4] if is_self_help_eligible and raw_self_help else []

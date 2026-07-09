@@ -303,7 +303,7 @@ export default function CreateTicketPage({ refreshInterval = 5000 }: { refreshIn
               </CardHeader>
               <CardContent className="p-3 text-sm text-muted-foreground">
                 <p>The classifier will review the issue, estimate priority and difficulty, route the ticket, and calculate the SLA target.</p>
-                <p>For easier issues, the response may also include self-help steps the requester can try while the ticket is tracked.</p>
+                <p>For easier issues, the response may also include Self-Diagnosis steps the requester can try while the ticket is tracked.</p>
               </CardContent>
             </Card>
           </aside>

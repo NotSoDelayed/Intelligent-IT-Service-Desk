@@ -152,7 +152,7 @@ class TicketOut(BaseModel):
     ai_confidence_reason: str | None = None
     ai_summary: str | None = None
 
-    # AI self-help (only populated when difficulty is Easy)
+    # AI Self-Diagnosis (only populated when difficulty is Easy)
     user_self_help_steps: list[str] | None = None
     self_help_note: str | None = None
 
@@ -213,7 +213,7 @@ class TicketTrackOut(BaseModel):
     Public ticket status check by ticket number. Deliberately excludes
     ai_recommended_steps (internal engineer troubleshooting notes) and
     the AI confidence level/reason -- those are admin/engineer-only via
-    TicketOut. The user only sees the plain-language summary, self-help
+    TicketOut. The user only sees the plain-language summary, Self-Diagnosis
     steps, and a duplicate warning if relevant.
     """
     model_config = ConfigDict(from_attributes=True)
@@ -244,7 +244,7 @@ class TicketTrackOut(BaseModel):
     duplicate_warning: str | None = None
     trend_warning: str | None = None
 
-    # self-help shown on tracking page too
+    # Self-Diagnosis shown on tracking page too
     user_self_help_steps: list[str] | None = None
     self_help_note: str | None = None
 
