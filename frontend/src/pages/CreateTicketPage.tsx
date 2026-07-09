@@ -104,8 +104,17 @@ export default function CreateTicketPage({ refreshInterval = 5000 }: { refreshIn
       setCreatedTicket(ticket);
       toast.success(`Ticket ${ticket.ticket_no} created.`);
     },
-    onError: () => {
-      toast.error('We could not create the ticket. Please review the form and try again.');
+    onError: (error: any) => {
+      let errorMessage = 'We could not create the ticket. Please review the form and try again.';
+      if (error.response?.data?.detail) {
+        const detail = error.response.data.detail;
+        if (Array.isArray(detail) && detail.length > 0 && detail[0].msg) {
+          errorMessage = detail[0].msg.replace('Value error, ', '');
+        } else if (typeof detail === 'string') {
+          errorMessage = detail;
+        }
+      }
+      toast.error(errorMessage);
     },
   });
 
@@ -226,8 +235,8 @@ export default function CreateTicketPage({ refreshInterval = 5000 }: { refreshIn
                       aria-invalid={Boolean(errors.content)}
                       disabled={createMutation.isPending}
                     />
-                    <div className={`absolute bottom-2 right-3 text-xs ${form.content.length < 100 ? 'text-destructive' : 'text-muted-foreground'}`}>
-                      {form.content.length} / 100 min
+                    <div className={`absolute bottom-2 right-3 text-xs ${form.content.length < 50 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                      {form.content.length} / 50 min
                     </div>
                   </div>
                 </FormField>
@@ -446,8 +455,8 @@ function validateForm(form: FormState): FormErrors {
   if (form.title.trim().length < 10) {
     errors.title = 'Enter at least 10 characters.';
   }
-  if (form.content.trim().length < 100) {
-    errors.content = 'Enter at least 100 characters.';
+  if (form.content.trim().length < 50) {
+    errors.content = 'Enter at least 50 characters.';
   }
   if (!['1', '2', '3', '4', '5'].includes(form.user_priority)) {
     errors.user_priority = 'Select an urgency level.';
