@@ -77,7 +77,7 @@ export default function LoginPage() {
             />
           </div>
 
-          <div>
+          {/* <div>
             <label htmlFor="demo-select" className="block text-sm font-medium mb-2 text-muted-foreground">
               Demo Quick Select
             </label>
@@ -104,7 +104,7 @@ export default function LoginPage() {
               <option value="engineer_system">engineer_system</option>
               <option value="engineer_general">engineer_general</option>
             </select>
-          </div>
+          </div> */}
 
           <Button
             type="submit"
@@ -115,11 +115,11 @@ export default function LoginPage() {
           </Button>
         </form>
 
-        <div className="mt-8 pt-6 border-t border-border">
+        {/* <div className="mt-8 pt-6 border-t border-border">
           <p className="text-sm text-muted-foreground text-center">
             <strong>Demo Accounts:</strong> Prefix username with <code className="bg-muted px-1.5 py-0.5 rounded text-foreground">admin_</code> or <code className="bg-muted px-1.5 py-0.5 rounded text-foreground">engineer_</code> for special roles.
           </p>
-        </div>
+        </div> */}
       </div>
     </div>
   );
