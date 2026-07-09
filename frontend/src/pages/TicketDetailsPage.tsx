@@ -230,8 +230,13 @@ export default function TicketDetailsPage({ refreshInterval = REFRESH_INTERVAL_M
       await queryClient.invalidateQueries({ queryKey: ['ticket-comments', id] });
       toast.success('Comment added successfully.');
     },
-    onError: () => {
-      toast.error('We could not add your comment. Please try again.');
+    onError: async (error: any) => {
+      if (error?.response?.status === 400 && error.response.data.detail?.includes('already')) {
+        toast.error('This ticket has been closed and can no longer receive comments.');
+        await queryClient.invalidateQueries({ queryKey: ['ticket', id] });
+      } else {
+        toast.error('We could not add your comment. Please try again.');
+      }
     },
   });
 

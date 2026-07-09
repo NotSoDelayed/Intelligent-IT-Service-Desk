@@ -657,6 +657,9 @@ def add_comment(
     if current_user.role == Role.user and ticket.author_username != current_user.username:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You can only comment on your own tickets")
 
+    if ticket.status in (TicketStatus.resolved, TicketStatus.closed):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Ticket is already {ticket.status.value.lower()}")
+
     if ticket.analytics and not ticket.analytics.first_responded_at:
         ticket.analytics.first_responded_at = datetime.utcnow()
 
