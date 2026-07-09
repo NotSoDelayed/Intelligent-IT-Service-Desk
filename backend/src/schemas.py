@@ -37,7 +37,6 @@ class TicketCreate(BaseModel):
                     "accurately analyze it. Filler text or repeated characters will be rejected.",
     )
     user_priority: int = Field(default=3, ge=1, le=5)
-    technology_app_item: str = Field(..., min_length=2, max_length=255)
 
     @field_validator("content")
     @classmethod
@@ -131,7 +130,6 @@ class TicketOut(BaseModel):
     status: str
     author: str
     author_username: str
-    technology_app_item: str | None = None
     age: int
     created_on: datetime
     ticket_start_date: datetime | None = None
@@ -226,7 +224,6 @@ class TicketTrackOut(BaseModel):
     status: str
     severity: str
     author: str
-    technology_app_item: str | None = None
     assigned_engineer: str | None = None
     priority: str | None = None
     difficulty: str | None = None

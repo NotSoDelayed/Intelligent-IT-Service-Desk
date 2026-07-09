@@ -676,7 +676,6 @@ function TicketDetailsContent({
             <DetailRow icon={<UserCog className="size-4" />} label="Assigned Engineer" value={ticket.assigned_engineer ?? 'Unassigned'} />
             <DetailRow icon={<UserCog className="size-4" />} label="Assigned Team" value={ticket.assigned_team ?? 'Unassigned'} />
             <DetailRow icon={<AlertTriangle className="size-4" />} label="Severity" value={ticket.severity} />
-            <DetailRow icon={<AppWindow className="size-4" />} label="Technology / App" value={ticket.technology_app_item || 'Unknown'} />
           </CardContent>
         </Card>
       </div>
@@ -760,7 +759,7 @@ function buildTimeline(ticket?: TicketDetailDto, comments: TicketComment[] = [])
       id: `created-${ticket.ticket_no}`,
       kind: 'system',
       title: 'Ticket created',
-      body: `Submitted by ${ticket.author} for ${ticket.technology_app_item}.`,
+      body: `Submitted by ${ticket.author}.`,
       timestamp: ticket.created_on,
     },
   ];

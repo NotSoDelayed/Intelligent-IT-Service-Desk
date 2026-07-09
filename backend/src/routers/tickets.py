@@ -234,7 +234,6 @@ def create_ticket(
         status=TicketStatus.open,
         author=current_user.full_name,
         author_username=current_user.username,
-        technology_app_item=payload.technology_app_item,
         created_on=created_on,
         user_priority=payload.user_priority,
         severity=Severity.medium,

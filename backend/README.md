@@ -135,7 +135,6 @@ curl -X POST http://localhost:8000/tickets \
     "department": "Finance",
     "title": "VPN keeps disconnecting",
     "content": "My VPN drops every few minutes, whole team cannot work today.",
-    "technology_app_item": "Cisco VPN",
     "user_priority": 5
   }'
 ```
@@ -199,7 +198,7 @@ endpoints.
 
 ### `schemas.py` (Pydantic contracts)
 
-- `TicketCreate` — public submission payload (name, email, department, title, content, technology_app_item, user_priority).
+- `TicketCreate` — public submission payload (name, email, department, title, content, user_priority).
 - `TicketOut` — full ticket detail response, including all AI/SLA/duplicate fields.
 - `TicketListOut` / `TicketPageOut` — lighter payload + pagination wrapper for the admin queue.
 - `TicketUpdateAdmin` — fields an admin may PATCH (status, severity, assigned_engineer, category, priority, difficulty, assigned_team).

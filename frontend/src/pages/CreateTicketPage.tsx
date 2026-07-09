@@ -38,7 +38,6 @@ type FormState = {
   name: string;
   title: string;
   content: string;
-  technology_app_item: string;
   user_priority: string;
 };
 
@@ -48,7 +47,6 @@ const initialForm: FormState = {
   name: '',
   title: '',
   content: '',
-  technology_app_item: '',
   user_priority: '3',
 };
 
@@ -136,7 +134,6 @@ export default function CreateTicketPage({ refreshInterval = 5000 }: { refreshIn
       name: form.name.trim(),
       title: form.title.trim(),
       content: form.content.trim(),
-      technology_app_item: form.technology_app_item.trim(),
       user_priority: Number(form.user_priority),
     };
 
@@ -213,16 +210,6 @@ export default function CreateTicketPage({ refreshInterval = 5000 }: { refreshIn
                       onBlur={handleBlur('title')}
                       placeholder="VPN disconnects during client calls"
                       aria-invalid={Boolean(errors.title)}
-                      disabled={createMutation.isPending}
-                    />
-                  </FormField>
-                  <FormField label="Technology, app, or item" error={errors.technology_app_item}>
-                    <Input
-                      value={form.technology_app_item}
-                      onChange={handleChange('technology_app_item')}
-                      onBlur={handleBlur('technology_app_item')}
-                      placeholder="PC, Zoom, VPN, Printer, etc..."
-                      aria-invalid={Boolean(errors.technology_app_item)}
                       disabled={createMutation.isPending}
                     />
                   </FormField>
@@ -432,7 +419,6 @@ function TicketCreatedResult({
           </CardHeader>
           <CardContent className="space-y-3 text-sm p-6 pt-0">
             <ResultItem label="Requester" value={form.name} icon={<User className="size-4" />} />
-            <ResultItem label="Technology" value={form.technology_app_item} icon={<AppWindow className="size-4" />} />
           </CardContent>
         </Card>
       </aside>
@@ -460,14 +446,8 @@ function validateForm(form: FormState): FormErrors {
   if (form.title.trim().length < 10) {
     errors.title = 'Enter at least 10 characters.';
   }
-  if (form.technology_app_item.trim().length < 2) {
-    errors.technology_app_item = 'Enter at least 2 characters.';
-  }
   if (form.content.trim().length < 100) {
     errors.content = 'Enter at least 100 characters.';
-  }
-  if (!form.technology_app_item.trim()) {
-    errors.technology_app_item = 'Technology, app, or item is required.';
   }
   if (!['1', '2', '3', '4', '5'].includes(form.user_priority)) {
     errors.user_priority = 'Select an urgency level.';

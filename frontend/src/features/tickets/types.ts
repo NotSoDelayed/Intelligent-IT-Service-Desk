@@ -17,7 +17,6 @@ export interface TicketCreatePayload {
   name: string;
   title: string;
   content: string;
-  technology_app_item: string;
   user_priority?: number;
 }
 
@@ -94,7 +93,6 @@ export interface TicketDetailDto {
   created_on: string;
   ticket_start_date: string | null;
   ticket_closed_date: string | null;
-  technology_app_item: string;
   severity: TicketBackendSeverity;
   assigned_engineer: string | null;
   closed_ticket: string | null;
