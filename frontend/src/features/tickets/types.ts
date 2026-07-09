@@ -108,6 +108,7 @@ export interface TicketDetailDto {
   ai_summary: string | null;
   user_self_help_steps: string[] | null;
   self_help_note: string | null;
+  is_self_service: boolean;
   sla_minutes: number | null;
   due_by: string | null;
   sla_status: string | null;

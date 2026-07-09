@@ -29,6 +29,7 @@ import {
   getTicketComments,
   updateTicketStatus,
   addTicketComment,
+  escalateTicket,
 } from '@/features/tickets/api/tickets';
 import type { TicketComment, TicketDetailDto } from '@/features/tickets/types';
 import {
@@ -81,6 +82,26 @@ export default function UserTicketDetailsPage({ refreshInterval = 5000 }: { refr
   }, [ticketQuery.data?.category, queryClient, id]);
 
 
+
+  const escalateMutation = useMutation({
+    mutationFn: () => {
+      const userStr = localStorage.getItem('user');
+      const username = userStr ? JSON.parse(userStr).username : '';
+      return escalateTicket(id ?? '', username);
+    },
+    onSuccess: async (ticket) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['ticket', id] }),
+        queryClient.invalidateQueries({ queryKey: ['ticket-comments', id] }),
+        queryClient.invalidateQueries({ queryKey: ['ticket-list'] }),
+      ]);
+      queryClient.setQueryData(['ticket', id], ticket);
+      toast.success('Ticket escalated successfully.');
+    },
+    onError: () => {
+      toast.error('We could not escalate this ticket. Please try again.');
+    },
+  });
 
   const closeMutation = useMutation({
     mutationFn: () => updateTicketStatus(id ?? '', toBackendStatus('closed')),
@@ -177,6 +198,8 @@ export default function UserTicketDetailsPage({ refreshInterval = 5000 }: { refr
           timeline={timeline}
           onAddComment={(msg) => addCommentMutation.mutateAsync(msg)}
           isAddingComment={addCommentMutation.isPending}
+          onEscalate={() => escalateMutation.mutate()}
+          isEscalating={escalateMutation.isPending}
         />
       )}
 
@@ -199,11 +222,15 @@ function TicketDetailsContent({
   timeline,
   onAddComment,
   isAddingComment,
+  onEscalate,
+  isEscalating,
 }: {
   ticket: TicketDetailDto;
   timeline: TimelineEvent[];
   onAddComment: (msg: string) => Promise<any>;
   isAddingComment: boolean;
+  onEscalate: () => void;
+  isEscalating: boolean;
 }) {
   const [newComment, setNewComment] = useState('');
 
@@ -265,6 +292,16 @@ function TicketDetailsContent({
                 </ol>
               )}
             </CardContent>
+            {ticket.is_self_service && !ticket.assigned_engineer && ['open', 'in_progress'].includes(toUiStatus(ticket.status)) && (
+              <div className="p-6 pt-0 flex justify-end">
+                <Button 
+                  onClick={onEscalate} 
+                  disabled={isEscalating}
+                >
+                  {isEscalating ? 'Escalating...' : 'Escalate to Engineer'}
+                </Button>
+              </div>
+            )}
           </Card>
         )}
 

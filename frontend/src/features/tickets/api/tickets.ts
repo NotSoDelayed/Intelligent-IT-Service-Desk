@@ -45,6 +45,11 @@ export async function reanalyzeTicket(ticketNo: string) {
   return response.data;
 }
 
+export async function escalateTicket(ticketNo: string, username: string) {
+  const response = await api.post<TicketDetailDto>(`/tickets/${ticketNo}/escalate`, { username });
+  return response.data;
+}
+
 export async function getTicketComments(ticketNo: string) {
   const response = await api.get<TicketComment[]>(`/tickets/${ticketNo}/comments`);
   return response.data;

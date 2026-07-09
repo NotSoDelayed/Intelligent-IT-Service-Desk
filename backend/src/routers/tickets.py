@@ -92,7 +92,6 @@ def background_process_ticket_creation(ticket_no: str, username: str):
         # buttons is now separately gated on confidence -- see
         # Ticket.is_self_service in models.py.)
         ticket.assigned_team = result.assigned_team
-        ticket.assigned_engineer = get_engineer_from_team(result.assigned_team)
 
         ticket.ai_recommended_steps = result.recommended_steps
         ticket.ai_confidence = result.confidence
@@ -109,6 +108,9 @@ def background_process_ticket_creation(ticket_no: str, username: str):
         else:
             ticket.ai_confidence_level = result.confidence_level
             ticket.ai_confidence_reason = result.confidence_reason
+
+        if not ticket.is_self_service:
+            ticket.assigned_engineer = get_engineer_from_team(result.assigned_team)
 
         ticket.ai_summary = result.summary
         ticket.user_self_help_steps = result.user_self_help_steps
@@ -367,7 +369,7 @@ def get_ticket(
 
 # ------------------------------------------------------------------
 # POST /tickets/{ticket_no}/complete  -- PUBLIC (ticket owner only)
-# Self-service tickets only (priority P4 + difficulty Easy + confidence
+# Self-service tickets only (Low severity + confidence
 # not Low -- see Ticket.is_self_service). One click, no message needed:
 # the user tried the Self-Diagnosis steps and it worked. Moves the ticket to
 # Resolved; an admin closes it from there.
@@ -388,7 +390,7 @@ def mark_self_service_complete(
     if not ticket.is_self_service:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
-            "This action is only available for self-service (P4 + Easy, confidently classified) tickets",
+            "This action is only available for self-service (Low severity, confidently classified) tickets",
         )
 
     if ticket.status in (TicketStatus.resolved, TicketStatus.closed):
@@ -409,7 +411,7 @@ def mark_self_service_complete(
 
 # ------------------------------------------------------------------
 # POST /tickets/{ticket_no}/escalate  -- PUBLIC (ticket owner only)
-# The counterpart to /complete. Self-service tickets only (P4 + Easy +
+# The counterpart to /complete. Self-service tickets only (Low severity +
 # confidence not Low). The user tried the Self-Diagnosis steps and it
 # didn't work -- this bumps the ticket to a real priority/difficulty
 # and recalculates the SLA. From here it behaves like any normal
@@ -431,7 +433,7 @@ def escalate_self_service_ticket(
     if not ticket.is_self_service:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
-            "This action is only available for self-service (P4 + Easy, confidently classified) tickets",
+            "This action is only available for self-service (Low severity, confidently classified) tickets",
         )
 
     if ticket.status in (TicketStatus.resolved, TicketStatus.closed):
@@ -443,16 +445,18 @@ def escalate_self_service_ticket(
     ticket.difficulty = "Medium"
     ticket.severity = Severity.medium
     ticket.assigned_team = TEAMS.get(ticket.category, "General Team")
+    ticket.assigned_engineer = get_engineer_from_team(ticket.assigned_team)
 
     sla = compute_sla(ticket.priority, ticket.difficulty, ticket.created_on)
     ticket.sla_minutes = sla["sla_minutes"]
     ticket.due_by = sla["due_by"]
 
+    assign_str = f" (assigned to {ticket.assigned_engineer})" if ticket.assigned_engineer else ""
     log_activity(
         db, ticket, "User",
         f"User reported the Self-Diagnosis steps didn't resolve the issue -- escalated "
         f"from {old_priority}/{old_difficulty} to {ticket.priority}/{ticket.difficulty} "
-        f"and routed to {ticket.assigned_team}.",
+        f"and routed to {ticket.assigned_team}{assign_str}.",
     )
     db.commit()
     db.refresh(ticket)

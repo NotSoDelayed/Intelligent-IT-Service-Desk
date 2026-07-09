@@ -101,7 +101,7 @@ class Ticket(Base):
     def is_self_service(self) -> bool:
         """
         True when the ticket qualifies for the self-resolve shortcut
-        (/complete and /escalate): priority P4 + difficulty Easy, AND the
+        (/complete and /escalate): Low severity, AND the
         AI wasn't just guessing -- if confidence was Low, the
         classification itself might be wrong, so we don't let the user
         prematurely self-close (or self-escalate) something that was
@@ -111,8 +111,7 @@ class Ticket(Base):
         self-service shortcut buttons, not team routing.
         """
         return (
-            self.priority == "P4"
-            and self.difficulty == "Easy"
+            self.severity == Severity.low
             and self.ai_confidence_level != "Low"
         )
 

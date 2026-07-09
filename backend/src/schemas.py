@@ -156,8 +156,8 @@ class TicketOut(BaseModel):
     user_self_help_steps: list[str] | None = None
     self_help_note: str | None = None
 
-    # True when priority is P4 and difficulty is Easy -- tells the frontend
-    # this ticket is self-service and won't be routed to a team.
+    # True when severity is Low -- tells the frontend
+    # this ticket is self-service and won't be routed to a team yet.
     is_self_service: bool = False
     is_trending: bool = False
 
@@ -247,6 +247,7 @@ class TicketTrackOut(BaseModel):
     # Self-Diagnosis shown on tracking page too
     user_self_help_steps: list[str] | None = None
     self_help_note: str | None = None
+    is_self_service: bool = False
 
 
 # ---------- Dashboard ----------
