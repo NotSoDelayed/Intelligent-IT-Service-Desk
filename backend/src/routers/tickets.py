@@ -410,6 +410,48 @@ def mark_self_service_complete(
 
 
 # ------------------------------------------------------------------
+# POST /tickets/{ticket_no}/unflag  -- ADMIN only
+# Unflags a ticket marked as spam or duplicate and returns it to the queue.
+# ------------------------------------------------------------------
+@router.post("/{ticket_no}/unflag", response_model=TicketOut)
+def unflag_ticket(
+    ticket_no: str,
+    current_user: MockUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if current_user.role != Role.admin:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only admins can unflag tickets")
+
+    ticket = db.query(Ticket).filter(Ticket.ticket_no == ticket_no).first()
+    if not ticket:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket not found")
+
+    if ticket.status != TicketStatus.flagged:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Ticket is not flagged")
+
+    ticket.status = TicketStatus.open
+    ticket.is_spam = False
+    ticket.duplicate_warning = None
+    ticket.duplicate_ticket_no = None
+
+    if ticket.assigned_team:
+        ticket.assigned_engineer = get_engineer_from_team(ticket.assigned_team)
+    else:
+        ticket.assigned_team = TEAMS.get(ticket.category, "General Team")
+        ticket.assigned_engineer = get_engineer_from_team(ticket.assigned_team)
+
+    assign_str = f" (assigned to {ticket.assigned_engineer})" if ticket.assigned_engineer else ""
+    log_activity(
+        db, ticket, current_user.full_name,
+        f"Unflagged ticket and returned to {ticket.assigned_team} queue{assign_str}."
+    )
+
+    db.commit()
+    db.refresh(ticket)
+    return ticket
+
+
+# ------------------------------------------------------------------
 # POST /tickets/{ticket_no}/escalate  -- PUBLIC (ticket owner only)
 # The counterpart to /complete. Self-service tickets only (Low severity +
 # confidence not Low). The user tried the Self-Diagnosis steps and it

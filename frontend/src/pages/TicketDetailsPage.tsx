@@ -59,6 +59,7 @@ import {
   updateTicket,
   updateTicketStatus,
   addTicketComment,
+  unflagTicket,
 } from '@/features/tickets/api/tickets';
 import type { TicketComment, TicketDetailDto } from '@/features/tickets/types';
 import {
@@ -92,6 +93,7 @@ export default function TicketDetailsPage({ refreshInterval = REFRESH_INTERVAL_M
   const [unresolveOpen, setUnresolveOpen] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
   const [unassignOpen, setUnassignOpen] = useState(false);
+  const [unflagOpen, setUnflagOpen] = useState(false);
   const [assigneeName, setAssigneeName] = useState('');
 
   const [isAdmin, setIsAdmin] = useState(false);
@@ -259,6 +261,23 @@ export default function TicketDetailsPage({ refreshInterval = REFRESH_INTERVAL_M
     },
   });
 
+  const unflagMutation = useMutation({
+    mutationFn: () => unflagTicket(id ?? ''),
+    onSuccess: async (ticket) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['ticket-list'] }),
+        queryClient.invalidateQueries({ queryKey: ['ticket', id] }),
+      ]);
+      queryClient.setQueryData(['ticket', id], ticket);
+      toast.success('Ticket unflagged and returned to queue.');
+      setUnflagOpen(false);
+      window.location.reload();
+    },
+    onError: () => {
+      toast.error('We could not unflag this ticket. Please try again.');
+    },
+  });
+
   const ticket = ticketQuery.data;
   const comments = commentsQuery.data ?? [];
   const isLoading = ticketQuery.isLoading || commentsQuery.isLoading;
@@ -311,6 +330,16 @@ export default function TicketDetailsPage({ refreshInterval = REFRESH_INTERVAL_M
               >
                 <RefreshCw className={cn('size-4', (reanalyzeMutation.isPending || (ticket && !ticket.category)) && 'animate-spin')} />
                 Reanalyze
+              </Button>
+            )}
+            {isAdmin && ticket?.status === 'Flagged' && (
+              <Button
+                variant="outline"
+                onClick={() => setUnflagOpen(true)}
+                disabled={unflagMutation.isPending || isLoading}
+              >
+                <ShieldCheck className="size-4" />
+                Unflag
               </Button>
             )}
             {ticket?.status !== 'Resolved' && ticket?.status !== 'Closed' && (
@@ -394,6 +423,16 @@ export default function TicketDetailsPage({ refreshInterval = REFRESH_INTERVAL_M
           isAddingComment={addCommentMutation.isPending}
         />
       )}
+
+      <ConfirmationDialog
+        open={unflagOpen}
+        onOpenChange={setUnflagOpen}
+        title="Unflag ticket?"
+        description="This will clear the spam/duplicate warnings and return the ticket to the active queue for engineer assignment."
+        confirmText="Unflag Ticket"
+        onConfirm={() => unflagMutation.mutate()}
+        loading={unflagMutation.isPending}
+      />
 
       <ConfirmationDialog
         open={reanalyzeOpen}

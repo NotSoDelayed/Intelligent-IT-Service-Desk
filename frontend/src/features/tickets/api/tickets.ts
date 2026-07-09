@@ -59,3 +59,8 @@ export async function addTicketComment(ticketNo: string, payload: TicketCommentC
   const response = await api.post<TicketComment>(`/tickets/${ticketNo}/comments`, payload);
   return response.data;
 }
+
+export async function unflagTicket(ticketNo: string) {
+  const response = await api.post<TicketDetailDto>(`/tickets/${ticketNo}/unflag`);
+  return response.data;
+}
