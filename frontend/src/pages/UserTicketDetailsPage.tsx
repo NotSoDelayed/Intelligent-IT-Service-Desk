@@ -230,7 +230,6 @@ function TicketDetailsContent({
                   {ticket.sla_status && <Badge variant="secondary">{ticket.sla_status}</Badge>}
                 </div>
                 <CardTitle className="text-2xl">{ticket.title}</CardTitle>
-                <p className="max-w-3xl text-sm text-muted-foreground">{ticket.content}</p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
@@ -241,6 +240,12 @@ function TicketDetailsContent({
               </div>
             </div>
           </CardHeader>
+          <CardContent className="p-6 pt-0">
+            <h3 className="font-semibold text-foreground mb-2">Description</h3>
+            <div className="text-sm text-muted-foreground whitespace-pre-wrap">
+              {ticket.content}
+            </div>
+          </CardContent>
         </Card>
         {(ticket.self_help_note || (ticket.user_self_help_steps && ticket.user_self_help_steps.length > 0)) && (
           <Card>

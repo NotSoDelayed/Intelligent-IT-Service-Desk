@@ -540,10 +540,9 @@ function TicketDetailsContent({
                   {ticket.sla_status && <Badge variant="secondary">{ticket.sla_status}</Badge>}
                 </div>
                 <CardTitle className="text-2xl">{ticket.title}</CardTitle>
-                <p className="max-w-3xl text-sm text-muted-foreground">{ticket.content}</p>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+              <div className="flex flex-col items-end gap-2 text-sm text-muted-foreground">
                 <Badge variant="outline" className="gap-1.5">
                   <User className="size-3.5" />
                   {ticket.author}
@@ -551,6 +550,12 @@ function TicketDetailsContent({
               </div>
             </div>
           </CardHeader>
+          <CardContent className="p-6 pt-0">
+            <h3 className="font-semibold text-foreground mb-2">Description</h3>
+            <div className="text-sm text-muted-foreground whitespace-pre-wrap">
+              {ticket.content}
+            </div>
+          </CardContent>
         </Card>
 
         <Card>

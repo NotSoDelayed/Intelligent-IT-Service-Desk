@@ -222,6 +222,7 @@ class TicketTrackOut(BaseModel):
 
     ticket_no: str
     title: str
+    content: str
     status: str
     severity: str
     author: str
