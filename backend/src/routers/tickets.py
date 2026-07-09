@@ -355,7 +355,8 @@ def get_ticket(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You do not have permission to view this ticket")
 
     if current_user.role == Role.engineer and ticket.assigned_team != current_user.team:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "This ticket isn't assigned to your team")
+        if ticket.author_username != current_user.username:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "This ticket isn't assigned to your team")
 
     if current_user.role in (Role.admin, Role.engineer):
         return TicketOut.model_validate(ticket)
@@ -644,7 +645,8 @@ def add_comment(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket not found")
 
     if current_user.role == Role.engineer and ticket.assigned_team != current_user.team:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "This ticket isn't assigned to your team")
+        if ticket.author_username != current_user.username:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "This ticket isn't assigned to your team")
 
     if current_user.role == Role.user and ticket.author_username != current_user.username:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You can only comment on your own tickets")
@@ -675,7 +677,8 @@ def list_comments(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket not found")
 
     if current_user.role == Role.engineer and ticket.assigned_team != current_user.team:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "This ticket isn't assigned to your team")
+        if ticket.author_username != current_user.username:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "This ticket isn't assigned to your team")
 
     if current_user.role == Role.user and ticket.author_username != current_user.username:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "You can only view comments on your own tickets")
