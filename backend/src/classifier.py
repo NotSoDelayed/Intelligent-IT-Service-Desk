@@ -63,7 +63,7 @@ class ClassificationResult:
 # problems. The router counts recent same-category tickets and passes
 # that count in here; this function decides whether to escalate.
 TREND_WINDOW_HOURS = 24
-TREND_THRESHOLD = 5  # this many same-category tickets in the window triggers a bump
+TREND_THRESHOLD = 3  # this many same-category tickets in the window triggers a bump
 
 # Priority order from least to most urgent -- a bump moves one step
 # toward the front (more urgent), capped at P1.
