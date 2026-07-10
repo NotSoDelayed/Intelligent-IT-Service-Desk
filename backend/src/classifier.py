@@ -1,3 +1,4 @@
+import logging
 import json
 import time
 from dataclasses import asdict, dataclass, field
@@ -488,7 +489,8 @@ def is_probable_spam(title: str, content: str) -> bool:
     # --- Additional lightweight gibberish heuristics ---
     # 1) If many tokens look non-wordlike (no vowels or extremely short),
     #    treat as probable spam.
-    words = re.findall(r"[a-z]+", text.lower())
+    # words = re.findall(r"[a-z]+", text.lower())
+    words = text.lower().split()
     if words:
         vowels = set("aeiou")
         non_wordlike = 0
@@ -535,12 +537,15 @@ def is_probable_spam(title: str, content: str) -> bool:
 
         # Heuristic thresholds tuned to avoid false positives on short-but-real
         # text while catching common keyboard-gibberish and random-letter spam.
-        if non_wordlike_ratio > 0.6:
-            return True
-        if short_word_ratio > 0.6 and word_count > 3:
-            return True
-        if bigram_ratio < 0.25 and word_count >= 4:
-            return True
+        # We only apply these statistical checks if there are enough words,
+        # otherwise perfectly normal short tickets (like "VPN is down") get flagged.
+        if word_count >= 5:
+            if non_wordlike_ratio > 0.8:
+                return True
+            if short_word_ratio > 0.8:
+                return True
+            if bigram_ratio < 0.10:
+                return True
 
     return False
 
